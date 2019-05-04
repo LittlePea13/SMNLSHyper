@@ -30,9 +30,9 @@ def load_elmo_dataset(path, max_len=200):
             print(i)
     # transform label to variable
     Y = l_encoder.fit_transform(label)
-    tensor_data = torch.from_numpy(np.array(X))
-    tensor_target = torch.from_numpy(np.array(Y))
-    return tensor_data, tensor_target
+    #tensor_data = torch.from_numpy(np.array(X))
+    #tensor_target = torch.from_numpy(np.array(Y))
+    return np.array(X), np.array(Y)
 
 if __name__ == "__main__":
     batch_size = 64
