@@ -1,3 +1,5 @@
+#code inspired from https://github.com/gao-g/metaphor-in-context/blob/master/sequence
+
 import math
 import sys
 import csv
