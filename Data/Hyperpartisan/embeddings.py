@@ -1,3 +1,5 @@
+# code inspired from https://github.com/GateNLP/semeval2019-hyperpartisan-bertha-von-suttner/blob/4b1d74b73247a06ed79e8e7af30923ce6828574a/Preprocessing/line2elmo2.py
+
 import math
 import sys
 import csv
