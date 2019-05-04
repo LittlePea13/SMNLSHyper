@@ -1,3 +1,8 @@
+import math
+import sys
+import csv
+import numpy as np
+from allennlp.commands.elmo import ElmoEmbedder
 
 def extract_emb(emb_file, lab_file):
   labels = []
