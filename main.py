@@ -1,6 +1,7 @@
 import ast
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
+from datasets import SentenceDataset
 
 def load_elmo_dataset(path, max_len=200):
     '''
@@ -36,5 +37,6 @@ def load_elmo_dataset(path, max_len=200):
 if __name__ == "__main__":
     batch_size = 64
     data, labels = load_elmo_dataset(path,200)
-    loader = data_utils.TensorDataset(data, labels)
-    loader_dataset = data_utils.DataLoader(loader, batch_size=batch_size, shuffle = True)
+    loader = TextDataset(data, labels, 200)
+    loader_dataset = data_utils.DataLoader(loader, batch_size=batch_size, shuffle=True,
+                                  collate_fn=TextDataset.collate_fn)
