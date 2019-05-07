@@ -1,8 +1,9 @@
 import ast
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
-from datasets import SentenceDataset
-
+from datasets import SentenceDataset,DocumentDataset
+from Data.Metaphors.embeddings import extract_emb
+import torch.utils.data as data_utils
 def load_elmo_dataset(path, max_len=200):
     '''
     load ELMo embedding from tsv file.
@@ -36,7 +37,14 @@ def load_elmo_dataset(path, max_len=200):
 
 if __name__ == "__main__":
     batch_size = 64
-    data, labels = load_elmo_dataset(path,200)
-    loader = TextDataset(data, labels, 200)
+    emb_file = 'Data/Metaphors/meta_embeds.npy'
+    lab_file = 'Data/Metaphors/meta_labels.npy'
+    data, labels = extract_emb(emb_file, lab_file)
+    #data, labels = load_elmo_dataset(path,200)
+    loader = SentenceDataset(data, labels, 200)
+    loader_doc = DocumentDataset(data, labels, 200)
     loader_dataset = data_utils.DataLoader(loader, batch_size=batch_size, shuffle=True,
-                                  collate_fn=TextDataset.collate_fn)
+                                  collate_fn=SentenceDataset.collate_fn)
+    for element in loader_dataset:
+        print(element)
+        break

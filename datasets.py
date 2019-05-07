@@ -89,16 +89,20 @@ class SentenceDataset(Dataset):
             # turn the text into a torch.FloatTenser, which is the same type as pad_tensor
             text = torch.Tensor(text)
             padded_example_text = torch.cat((text, pad_tensor), dim=0)
+            padded_example_label = np.append(label,np.zeros(amount_to_pad))
 
             # Add the padded example to our batch
             batch_padded_example_text.append(padded_example_text)
             batch_lengths.append(length)
-            batch_labels.append(label)
+            batch_labels.append(padded_example_label)
 
+        tensor_text = torch.stack(batch_padded_example_text)
+        tensor_labels = torch.LongTensor(batch_labels)
+        tensor_lengths = torch.LongTensor(batch_lengths)
         # Stack the list of LongTensors into a single LongTensor
-        return (torch.stack(batch_padded_example_text),
-                torch.LongTensor(batch_lengths),
-                torch.LongTensor(batch_labels))
+        return (tensor_text,
+                tensor_lengths,
+                tensor_labels)
 
 class DocumentDataset(Dataset):
     def __init__(self, embedded_docs, labels, max_sequence_length=100):
@@ -107,10 +111,12 @@ class DocumentDataset(Dataset):
         :param labels: a list of ints
         :param max_sequence_length: an int
         """
-        if len(embedded_text) != len(labels):
+        if len(embedded_docs) != len(labels):
             raise ValueError("Differing number of sentences and labels!")
         # A list of numpy arrays, where each inner numpy arrays is sequence_length * embed_dim
         # embedding for each word is : elmo
+        if len(embedded_docs.shape) == 1:
+            embedded_docs = embedded_docs.reshape((-1,1))
         self.embedded_docs = embedded_docs
         # A list of ints, where each int is a label of the sentence at the corresponding index.
         self.labels = labels
@@ -192,5 +198,5 @@ class DocumentDataset(Dataset):
         # Stack the list of LongTensors into a single LongTensor
         return (torch.stack(batch_padded_example_text),
                 torch.LongTensor(batch_lengths),
-                torch.LongTensor(batch_labels)),
-                torch.LongTensor(batch_lengths_sent)
+                torch.LongTensor(batch_labels),
+                torch.LongTensor(batch_lengths_sent))
