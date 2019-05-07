@@ -5,6 +5,10 @@ from datasets import SentenceDataset,DocumentDataset
 from Data.Metaphors.embeddings import extract_emb
 import torch.utils.data as data_utils
 from model import BiLSTMEncoder,MainModel
+from helper import evaluate
+import torch.nn as nn
+import torch.optim as optim
+
 def load_elmo_dataset(path, max_len=200):
     '''
     load ELMo embedding from tsv file.
@@ -43,12 +47,42 @@ if __name__ == "__main__":
     lab_file = 'Data/Metaphors/meta_labels.npy'
     data, labels = extract_emb(emb_file, lab_file)
     #data, labels = load_elmo_dataset(path,200)
-    loader = SentenceDataset(data, labels, 200)
+    dataset = SentenceDataset(data, labels, 200)
     loader_doc = DocumentDataset(data, labels, 200)
-    loader_dataset = data_utils.DataLoader(loader, batch_size=batch_size, shuffle=True,
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = data_utils.random_split(dataset, [train_size, test_size])
+
+    loader_dataset = data_utils.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                   collate_fn=SentenceDataset.collate_fn)
+    val_dataset = data_utils.DataLoader(test_dataset, batch_size=batch_size, shuffle=True,
+                                  collate_fn=SentenceDataset.collate_fn)
+
     model = MainModel(embed_dim=1024, hidden_dim = hidden_dim, layers = 1, dropout_lstm = 0, dropout_input=0, dropout_FC=0, num_classes = 2)
-    for data, length, label in loader_dataset:
-        prediction = model.forward(data, length)
-        print(prediction.shape)
-        break
+
+    nll_criterion = nn.NLLLoss()
+    # Set up an optimizer for updating the parameters of the rnn_clf
+    met_model_optimizer = optim.SGD(model.parameters(), lr=0.01,momentum=0.9)
+    # Number of epochs (passes through the dataset) to train the model for.
+    num_epochs = 20
+
+    val_loss = []
+    val_f1 = []
+    counter = 0
+    for epoch in range(num_epochs):
+        print("Starting epoch {}".format(epoch + 1))
+        for (data, lengths, labels) in loader_dataset:
+            predicted = model(data, lengths)
+            batch_loss = nll_criterion(predicted.view(-1, 2), labels.view(-1))
+            print(batch_loss.item())
+            met_model_optimizer.zero_grad()
+            batch_loss.backward()
+            met_model_optimizer.step()
+            counter += 1
+            if counter % 2 == 0:
+                avg_eval_loss = evaluate(val_dataset, model, nll_criterion)
+                print(avg_eval_loss)
+                #val_loss.append(avg_eval_loss)
+                #val_f1.append(f1)
+                #print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}. Validation class-wise F1 {}.".format(num_iter, avg_eval_loss, eval_accuracy, precision, recall, f1, fus_f1))
+    print("Training done!")
