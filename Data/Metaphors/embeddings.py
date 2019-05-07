@@ -29,7 +29,7 @@ def preprocess_metaphor_elmo(infile, outfile, name):
           
   np.save(name, label)
 
-def extract_elmo(filename):
+def extract_elmo(filename, name):
 
 # must be an hdf5 file containing all the word embeddings
 #   filename = 'elmo_train_vua.hdf5'
@@ -52,8 +52,8 @@ def extract_elmo(filename):
     data = list(f[i])
     final_embeds.append(data)
 
-  print(len(final_embeds))
-  np.save("vua_val_embeds",final_embeds)
+#   print(len(final_embeds))
+  np.save(name ,final_embeds)
 
 # def metaphor_elmo(infile):
 
