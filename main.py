@@ -4,6 +4,7 @@ from sklearn.preprocessing import LabelEncoder
 from datasets import SentenceDataset,DocumentDataset
 from Data.Metaphors.embeddings import extract_emb
 import torch.utils.data as data_utils
+from model import BiLSTMEncoder,MainModel
 def load_elmo_dataset(path, max_len=200):
     '''
     load ELMo embedding from tsv file.
@@ -37,6 +38,7 @@ def load_elmo_dataset(path, max_len=200):
 
 if __name__ == "__main__":
     batch_size = 64
+    hidden_dim = 512
     emb_file = 'Data/Metaphors/meta_embeds.npy'
     lab_file = 'Data/Metaphors/meta_labels.npy'
     data, labels = extract_emb(emb_file, lab_file)
@@ -45,6 +47,8 @@ if __name__ == "__main__":
     loader_doc = DocumentDataset(data, labels, 200)
     loader_dataset = data_utils.DataLoader(loader, batch_size=batch_size, shuffle=True,
                                   collate_fn=SentenceDataset.collate_fn)
-    for element in loader_dataset:
-        print(element)
+    model = MainModel(embed_dim=1024, hidden_dim = hidden_dim, layers = 1, dropout_lstm = 0, dropout_input=0, dropout_FC=0, num_classes = 2)
+    for data, length, label in loader_dataset:
+        prediction = model.forward(data, length)
+        print(prediction.shape)
         break
