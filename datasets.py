@@ -12,6 +12,7 @@ class SentenceDataset(Dataset):
         :param labels: a list of ints
         :param max_sequence_length: an int
         """
+        print('Number of sentences', len(embedded_text))
         if len(embedded_text) != len(labels):
             raise ValueError("Differing number of sentences and labels!")
         # A list of numpy arrays, where each inner numpy arrays is sequence_length * embed_dim

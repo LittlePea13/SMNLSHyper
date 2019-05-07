@@ -69,6 +69,7 @@ if __name__ == "__main__":
     val_loss = []
     val_f1 = []
     counter = 0
+
     for epoch in range(num_epochs):
         print("Starting epoch {}".format(epoch + 1))
         for (data, lengths, labels) in loader_dataset:
@@ -80,9 +81,9 @@ if __name__ == "__main__":
             met_model_optimizer.step()
             counter += 1
             if counter % 2 == 0:
-                avg_eval_loss = evaluate(val_dataset, model, nll_criterion)
-                print(avg_eval_loss)
+                avg_eval_loss, precision, recall, f1, eval_accuracy = evaluate(val_dataset, model, nll_criterion)
+                #print(avg_eval_loss)
                 #val_loss.append(avg_eval_loss)
                 #val_f1.append(f1)
-                #print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}. Validation class-wise F1 {}.".format(num_iter, avg_eval_loss, eval_accuracy, precision, recall, f1, fus_f1))
+                print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}.".format(counter, avg_eval_loss, eval_accuracy, precision, recall, f1))
     print("Training done!")
