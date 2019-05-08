@@ -27,11 +27,11 @@ class BiLSTMEncoder(nn.Module):
         embedded_input = self.input_dropout(inputs)
         (sorted_input, sorted_lengths, input_unsort_indices, _) = sort_batch_by_length(inputs, lengths)
         packed_input = pack_padded_sequence(sorted_input, sorted_lengths.data.tolist(), batch_first=True)
+        if torch.cuda.is_available():
+            packed_input.to(device=torch.device('cuda'))
         embedding, _ = self.rnn(packed_input)
         embedding, _ = pad_packed_sequence(embedding, batch_first=True)
         embedding = embedding[input_unsort_indices]
-        # Tried batch_norm
-        #embedding = self.batch_norm(embedding)
         return embedding
 
 class Metaphor(nn.Module):
@@ -39,7 +39,7 @@ class Metaphor(nn.Module):
         super(Metaphor, self).__init__()
         self.fcl = nn.Linear(hidden_dim*2, num_classes)
         self.linear_dropout = nn.Dropout(dropout)
-    
+
     def forward(self, output):
 
         input_encoding = self.linear_dropout(output)
@@ -60,7 +60,9 @@ class MainModel(nn.Module):
 
         self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
         self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
-
+        if torch.cuda.is_available():
+            self.embbedding.to(device=torch.device('cuda'))
+            self.embbedding.to(device=torch.device('cuda'))
     def forward(self, inputs, lengths):
 
         out_embedding = self.embbedding.forward(inputs, lengths)

@@ -71,7 +71,7 @@ if __name__ == "__main__":
     # Set up an optimizer for updating the parameters of the rnn_clf
     met_model_optimizer = optim.Adam(model.parameters(), lr=0.005)
     # Number of epochs (passes through the dataset) to train the model for.
-    num_epochs = 20
+    num_epochs = 5
 
     val_loss = []
     val_f1 = []
@@ -98,7 +98,7 @@ if __name__ == "__main__":
             writer.add_scalar('Train/recall', recall, (counter))
             writer.add_scalar('Train/accuracy', recall, (counter))
             writer.add_scalar('Train/Loss', batch_loss.item(), (counter))
-            if counter % 2 == 0:
+            if counter % 50 == 0:
                 avg_eval_loss, precision, recall, f1, eval_accuracy = evaluate(val_loader, model, nll_criterion, device)
                 writer.add_scalar('Val/F1', f1, (counter))
                 writer.add_scalar('Val/precision', precision, (counter))
@@ -110,4 +110,18 @@ if __name__ == "__main__":
                 #val_f1.append(f1)
                 print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}.".format(counter, avg_eval_loss, eval_accuracy, precision, recall, f1))
     print("Training done!")
+    
+    emb_file_test = 'Data/Metaphors/VUA/vua_test_embeds.npy'
+    lab_file_test = 'Data/Metaphors/VUA/vua_test_labels.npy'
+
+    data_test, labels_test = extract_emb(emb_file_test, lab_file_test)
+    dataset_test = SentenceDataset(data_test, labels_test, 200)
+    test_loader = data_utils.DataLoader(dataset_test, batch_size=batch_size, shuffle=True,
+                                  collate_fn=SentenceDataset.collate_fn)
+    avg_test_loss, precision, recall, f1, test_accuracy = evaluate(test_loader, model, nll_criterion, device)
+    writer.add_scalar('Test/F1', f1, (counter))
+    writer.add_scalar('Test/precision', precision, (counter))
+    writer.add_scalar('Test/recall', recall, (counter))
+    writer.add_scalar('Test/accuracy', test_accuracy, (counter))
+    writer.add_scalar('Test/Loss', avg_test_loss, (counter))
     writer.close()

@@ -23,7 +23,8 @@ class SentenceDataset(Dataset):
         # Truncate examples that are longer than max_sequence_length.
         # Long sequences are expensive and might blow up GPU memory usage.
         self.max_sequence_length = max_sequence_length
-
+        number_words = sum(len(element) for element in labels)
+        print('number of words', number_words)
 
     def __getitem__(self, idx):
         """
