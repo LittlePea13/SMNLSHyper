@@ -7,6 +7,8 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 import torch.nn.functional as F
 
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
 class BiLSTMEncoder(nn.Module):
     def __init__(self, embed_dim,hidden_dim,layers,dropout_lstm, dropout_input=0.2):
         super(BiLSTMEncoder, self).__init__()
@@ -15,7 +17,7 @@ class BiLSTMEncoder(nn.Module):
         self.layers = layers
         self.dropout_input = dropout_input
         self.dropout_lstm = dropout_lstm
-        self.rnn = nn.LSTM(input_size=embed_dim, #1024
+        self.rnn = nn.LSTM(input_size=embed_dim, #512
                            hidden_size=hidden_dim, #hyper
                            num_layers=layers, #1
                            dropout=dropout_lstm, 
@@ -57,7 +59,7 @@ class MainModel(nn.Module):
         self.dropout_input = dropout_input
         self.dropout_FC = dropout_FC
         self.dropout_lstm = dropout_lstm
-
+        self.self_attention = SelfAttention(2*hidden_dim)
         self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
         self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
         if torch.cuda.is_available():
@@ -66,9 +68,93 @@ class MainModel(nn.Module):
     def forward(self, inputs, lengths):
 
         out_embedding = self.embbedding.forward(inputs, lengths)
+        out_attention, _ = self.self_attention(out_embedding, lengths)
         normalized_output = self.metafor_classifier(out_embedding)
 
         return normalized_output 
+        
+# Self-attention layer from https://gist.github.com/cbaziotis/94e53bdd6e4852756e0395560ff38aa4
+class SelfAttention(nn.Module):
+    def __init__(self, attention_size,
+                 batch_first=True,
+                 layers=1,
+                 dropout=.0,
+                 non_linearity="tanh"):
+        super(SelfAttention, self).__init__()
+
+        self.batch_first = batch_first
+
+        if non_linearity == "relu":
+            activation = nn.ReLU()
+        else:
+            activation = nn.Tanh()
+
+        modules = []
+        for i in range(layers - 1):
+            modules.append(nn.Linear(attention_size, attention_size))
+            modules.append(activation)
+            modules.append(nn.Dropout(dropout))
+
+        # last attention layer must output 1
+        modules.append(nn.Linear(attention_size, 1))
+        modules.append(activation)
+        modules.append(nn.Dropout(dropout))
+
+        self.attention = nn.Sequential(*modules)
+
+        self.softmax = nn.Softmax(dim=-1)
+
+    @staticmethod
+    def get_mask(attentions, lengths):
+        """
+        Construct mask for padded itemsteps, based on lengths
+        """
+        max_len = max(lengths.data)
+        mask = Variable(torch.ones(attentions.size())).detach()
+        mask = mask.to(device)
+
+        for i, l in enumerate(lengths.data):  # skip the first sentence
+            if l < max_len:
+                mask[i, l:] = 0
+        return mask
+
+    def forward(self, inputs, lengths):
+
+        ##################################################################
+        # STEP 1 - perform dot product
+        # of the attention vector and each hidden state
+        ##################################################################
+
+        # inputs is a 3D Tensor: batch, len, hidden_size
+        # scores is a 2D Tensor: batch, len
+        scores = self.attention(inputs).squeeze()
+        scores = self.softmax(scores)
+
+        ##################################################################
+        # Step 2 - Masking
+        ##################################################################
+
+        # construct a mask, based on sentence lengths
+        mask = self.get_mask(scores, lengths)
+
+        # apply the mask - zero out masked timesteps
+        masked_scores = scores * mask
+
+        # re-normalize the masked scores
+        _sums = masked_scores.sum(-1, keepdim=True)  # sums per row
+        scores = masked_scores.div(_sums)  # divide by row sum
+
+        ##################################################################
+        # Step 3 - Weighted sum of hidden states, by the attention scores
+        ##################################################################
+
+        # multiply each hidden state with the attention weights
+        weighted = torch.mul(inputs, scores.unsqueeze(-1).expand_as(inputs))
+
+        # sum the hidden states
+        representations = weighted.sum(1).squeeze()
+
+        return representations, scores
 
 def sort_batch_by_length(tensor: torch.Tensor, sequence_lengths: torch.Tensor):
     """
