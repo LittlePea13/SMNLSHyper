@@ -1,5 +1,8 @@
 import numpy as np
 import torch
+from datasets import SentenceDataset,DocumentDataset
+import torch.utils.data as data_utils
+from Data.Metaphors.embeddings import extract_emb
 
 def evaluate(evaluation_dataloader, model, criterion, device):
     model.eval()
@@ -46,3 +49,17 @@ def update_confusion_matrix(matrix, predictions, labels, sen_len):
             l = label[j]
             matrix[p][l] += 1
     return matrix
+
+
+def get_metaphor_dataset(filename_data, filename_labels, batch_size):
+    data, labels = extract_emb(filename_data, filename_labels)
+    dataset = SentenceDataset(data, labels, 200)
+    return data_utils.DataLoader(dataset, batch_size=batch_size, shuffle=True,
+                                  collate_fn=SentenceDataset.collate_fn)
+
+def write_board(writer, partition, precision, recall, f1, accuracy, loss, step):
+    writer.add_scalar(partition + '/F1', f1, (step))
+    writer.add_scalar(partition + '/precision', precision, (step))
+    writer.add_scalar(partition + '/recall', recall, (step))
+    writer.add_scalar(partition + '/accuracy', accuracy, (step))
+    writer.add_scalar(partition + '/Loss', loss, (step))

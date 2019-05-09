@@ -68,8 +68,8 @@ class MainModel(nn.Module):
     def forward(self, inputs, lengths):
 
         out_embedding = self.embbedding.forward(inputs, lengths)
-        out_attention, _ = self.self_attention(out_embedding, lengths)
-        normalized_output = self.metafor_classifier(out_embedding)
+        out_attention, attention, weighted = self.self_attention(out_embedding, lengths)
+        normalized_output = self.metafor_classifier(weighted)
 
         return normalized_output 
         
@@ -154,7 +154,7 @@ class SelfAttention(nn.Module):
         # sum the hidden states
         representations = weighted.sum(1).squeeze()
 
-        return representations, scores
+        return representations, scores, weighted
 
 def sort_batch_by_length(tensor: torch.Tensor, sequence_lengths: torch.Tensor):
     """
