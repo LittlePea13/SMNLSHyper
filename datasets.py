@@ -117,8 +117,8 @@ class DocumentDataset(Dataset):
             raise ValueError("Differing number of sentences and labels!")
         # A list of numpy arrays, where each inner numpy arrays is sequence_length * embed_dim
         # embedding for each word is : elmo
-        if len(embedded_docs.shape) == 1:
-            embedded_docs = embedded_docs.reshape((-1,1))
+        #if len(embedded_docs.shape) == 1:
+        #    embedded_docs = embedded_docs.reshape((-1,1))
         self.embedded_docs = embedded_docs
         # A list of ints, where each int is a label of the sentence at the corresponding index.
         self.labels = labels
@@ -141,7 +141,7 @@ class DocumentDataset(Dataset):
         example_text = self.embedded_docs[idx]
         sentences_lengths = [len(sentence) for sentence in example_text]
         example_label = self.labels[idx]
-        # Truncate the sequence if necessary
+        # Truncate the sequence if necessary fix this, now is doing documents
         example_text = example_text[:self.max_sequence_length]
         example_length = example_text.shape[0]
 
@@ -172,10 +172,12 @@ class DocumentDataset(Dataset):
         batch_lengths = []
         batch_labels = []
         batch_sen_lengths = []
-
-        # Get the length of the longest sequence in the batch
-        max_length = max(batch, key=lambda example: example[1])[1]
-        max_length_sen = max(max(batch, key=lambda example: example[4])[1])
+        max_length = max([element[1] for element in batch])
+        #print(max(batch, key=lambda example: example[1]))
+        #print(max(batch, key=lambda example: example[2]))
+        #print(max_length)
+        #print(max(batch, key=lambda example: example[3]))
+        max_length_sen = max([max(element[3]) for element in batch])
 
         # Iterate over each example in the batch
         for text, length, label, sen_len in batch:
@@ -183,14 +185,16 @@ class DocumentDataset(Dataset):
             # Unpack the example (returned from __getitem__)
             for sentence in text:
                 amount_to_pad = max_length_sen - len(sentence)
-                pad_tensor = torch.zeros(amount_to_pad, sentence.shape[1])
                 sentence = torch.Tensor(sentence)
+                pad_tensor = torch.zeros(amount_to_pad, sentence.shape[1])
                 padded_sentence_text = torch.cat((sentence, pad_tensor), dim=0)
                 doc_sentences.append(padded_sentence_text)
-            amount_to_pad = max_length - length
+            '''amount_to_pad = max_length - length
             for i in range(amount_to_pad):
                 pad_tensor = torch.zeros(max_length_sen, sentence.shape[1])
                 doc_sentences.append(pad_tensor)
+            sentences_len = torch.Tensor(sen_len)
+            padded_senlen = torch.cat((sentences_len, torch.zeros(amount_to_pad)), dim=0)'''
             batch_padded_example_text.append(torch.stack(doc_sentences))
             # Add the padded example to our batch
             batch_lengths.append(length)
@@ -198,7 +202,7 @@ class DocumentDataset(Dataset):
             batch_sen_lengths.append(sen_len)
 
         # Stack the list of LongTensors into a single LongTensor
-        return (torch.stack(batch_padded_example_text),
+        return (batch_padded_example_text,
                 torch.LongTensor(batch_lengths),
                 torch.LongTensor(batch_labels),
-                torch.LongTensor(batch_lengths_sent))
+                batch_sen_lengths)

@@ -39,6 +39,16 @@ def evaluate_train(labels, predictions, lengths):
     accuracy = 100 * (confusion_matrix[1, 1] + confusion_matrix[0, 0]) / np.sum(confusion_matrix)
     return precision, recall, f1, accuracy
 
+def evaluate_train_hyper(labels, predictions):
+    _, predicted_labels = torch.max(predictions.data, 1)
+    confusion_matrix = np.zeros((2, 2))
+    confusion_matrix = update_hyper_confusion_matrix(confusion_matrix, predicted_labels, labels.data)
+    precision = 100 * confusion_matrix[1, 1] / np.sum(confusion_matrix[1])
+    recall = 100 * confusion_matrix[1, 1] / np.sum(confusion_matrix[:, 1])
+    f1 = 2 * precision * recall / (precision + recall)
+    accuracy = 100 * (confusion_matrix[1, 1] + confusion_matrix[0, 0]) / np.sum(confusion_matrix)
+    return precision, recall, f1, accuracy
+
 def update_confusion_matrix(matrix, predictions, labels, sen_len):
     for i in range(len(sen_len)):
         prediction = predictions[i]
@@ -50,12 +60,24 @@ def update_confusion_matrix(matrix, predictions, labels, sen_len):
             matrix[p][l] += 1
     return matrix
 
+def update_hyper_confusion_matrix(matrix, predictions, labels):
+    for j in range(len(labels)):
+        p = predictions[j]
+        l = labels[j]
+        matrix[p][l] += 1
+    return matrix
 
 def get_metaphor_dataset(filename_data, filename_labels, batch_size):
     data, labels = extract_emb(filename_data, filename_labels)
     dataset = SentenceDataset(data, labels, 200)
     return data_utils.DataLoader(dataset, batch_size=batch_size, shuffle=True,
                                   collate_fn=SentenceDataset.collate_fn)
+
+def get_document_dataset(filename_data, filename_labels, batch_size):
+    data, labels = extract_emb(filename_data, filename_labels)
+    dataset = DocumentDataset(data, labels, 200)
+    return data_utils.DataLoader(dataset, batch_size=batch_size, shuffle=True,
+                                  collate_fn=DocumentDataset.collate_fn)
 
 def write_board(writer, partition, precision, recall, f1, accuracy, loss, step):
     writer.add_scalar(partition + '/F1', f1, (step))

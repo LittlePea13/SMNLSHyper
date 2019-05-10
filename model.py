@@ -50,6 +50,20 @@ class Metaphor(nn.Module):
 
         return normalized_output
 
+class Hyperpartisan(nn.Module):
+    def __init__(self, dropout, num_classes, hidden_dim):
+        super(Metaphor, self).__init__()
+        self.fcl = nn.Linear(hidden_dim*2, num_classes)
+        self.linear_dropout = nn.Dropout(dropout)
+
+    def forward(self, output):
+
+        input_encoding = self.linear_dropout(output)
+        unnormalized_output = self.fcl(input_encoding)
+        normalized_output = F.log_softmax(unnormalized_output, dim=-1)
+
+        return normalized_output
+
 class MainModel(nn.Module):
     def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, num_classes):
         super(MainModel, self).__init__()
@@ -68,11 +82,50 @@ class MainModel(nn.Module):
     def forward(self, inputs, lengths):
 
         out_embedding = self.embbedding.forward(inputs, lengths)
-        out_attention, attention, weighted = self.self_attention(out_embedding, lengths)
-        normalized_output = self.metafor_classifier(weighted)
+        #out_attention, attention, weighted = self.self_attention(out_embedding, lengths)
+        normalized_output = self.metafor_classifier(out_embedding)
 
         return normalized_output 
-        
+
+class ModelHyper(nn.Module):
+    def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, num_classes):
+        super(ModelHyper, self).__init__()
+        self.embed_dim = embed_dim
+        self.hidden_dim = hidden_dim
+        self.layers = layers
+        self.dropout_input = dropout_input
+        self.dropout_FC = dropout_FC
+        self.dropout_lstm = dropout_lstm
+        self.self_attention = SelfAttention(2*hidden_dim)
+        self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
+        self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm,dropout_input)
+        self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
+        self.doc_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
+        if torch.cuda.is_available():
+            self.embbedding.to(device=torch.device('cuda'))
+            self.metafor_classifier.to(device=torch.device('cuda'))
+    def forward(self, inputs, lengths, doc_lengths):
+        squezeed = torch.cat((inputs), 0)
+        squezeed_lengths = torch.LongTensor([val for sublist in lengths for val in sublist])
+        predicted = self.embbedding(squezeed, squezeed_lengths)
+        #normalized_output = self.metafor_classifier(out_embedding)
+        predicted_docs = []
+        threeshold = 0
+        max_length_doc = max(doc_lengths)
+        for i,element in enumerate(doc_lengths):
+            doc = predicted[threeshold:threeshold+element]
+            threeshold += element
+            mean_doc = torch.div((doc.sum(dim=1).transpose(0,1)), torch.FloatTensor(lengths[i]), out=None).transpose(0,1)
+            amount_to_pad = max_length_doc - len(mean_doc)
+            pad_tensor = torch.zeros(amount_to_pad, mean_doc.shape[1])
+            padded_doc = torch.cat((mean_doc, pad_tensor), dim=0)
+            predicted_docs.append(padded_doc)
+        predicted_docs = torch.stack(predicted_docs)
+        out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
+        prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
+        class_prediction = self.doc_classifier(prediction)
+        return class_prediction 
+
 # Self-attention layer from https://gist.github.com/cbaziotis/94e53bdd6e4852756e0395560ff38aa4
 class SelfAttention(nn.Module):
     def __init__(self, attention_size,
