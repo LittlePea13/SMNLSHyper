@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 from tensorboardX import SummaryWriter
+import time
 
 if __name__ == "__main__":
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -15,7 +16,16 @@ if __name__ == "__main__":
     
     loader_dataset_hyp = get_document_dataset('Data/Hyperpartisan/hyp_embeds.npy','Data/Hyperpartisan/hyp_labels.npy',batch_size)
 
-    model = ModelHyper(embed_dim=1024, hidden_dim = hidden_dim, layers = 1, dropout_lstm = 0, dropout_input=0.5, dropout_FC=0.1, num_classes = 2)
+    model = ModelHyper(embed_dim=1024, 
+                        hidden_dim = hidden_dim, 
+                        layers = 1, 
+                        dropout_lstm = 0, 
+                        dropout_input=0.5, 
+                        dropout_FC=0.1,
+                        dropout_lstm_hyper = 0.3,
+                        dropout_input_hyper = 0.6,
+                        dropout_attention = 0.4,
+                        num_classes = 2)
     if torch.cuda.is_available():
         model.to(device=device)
     nll_criterion = nn.NLLLoss()
@@ -37,12 +47,21 @@ if __name__ == "__main__":
                 data.to(device=device)
                 lengths.to(device=device)
                 labels.to(device=device)
+            start = time.time()
             predicted = model(data, sen_len, doc_len)
+            end = time.time()
+            print(end - start, ' Forward pass')
             batch_loss = nll_criterion(predicted.view(-1, 2), labels.view(-1))
             precision, recall, f1, eval_accuracy = evaluate_train_hyper(labels, predicted)
+            end = time.time()
+            print(end - start, ' Evaluate and compute loss')
             met_model_optimizer.zero_grad()
             batch_loss.backward()
+            end = time.time()
+            print(end - start, ' Backward pass')
             met_model_optimizer.step()
+            end = time.time()
+            print(end - start, ' optimize step')
             counter += 1
             write_board(writer,'Hyper/Train', precision, recall, f1, eval_accuracy, batch_loss.item(), counter)
             '''if counter % 50 == 0:

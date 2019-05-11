@@ -41,6 +41,7 @@ def evaluate_train(labels, predictions, lengths):
 
 def evaluate_train_hyper(labels, predictions):
     _, predicted_labels = torch.max(predictions.data, 1)
+    print(predicted_labels)
     confusion_matrix = np.zeros((2, 2))
     confusion_matrix = update_hyper_confusion_matrix(confusion_matrix, predicted_labels, labels.data)
     precision = 100 * confusion_matrix[1, 1] / np.sum(confusion_matrix[1])

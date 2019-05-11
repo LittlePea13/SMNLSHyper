@@ -142,8 +142,8 @@ class DocumentDataset(Dataset):
         sentences_lengths = [len(sentence) for sentence in example_text]
         example_label = self.labels[idx]
         # Truncate the sequence if necessary fix this, now is doing documents
-        example_text = example_text[:self.max_sequence_length]
-        example_length = example_text.shape[0]
+        example_text = [text[:self.max_sequence_length] for text in example_text]
+        example_length = len(example_text)
 
         return example_text, example_length, example_label, sentences_lengths
 

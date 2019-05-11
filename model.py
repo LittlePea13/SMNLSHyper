@@ -6,6 +6,7 @@ from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -88,7 +89,7 @@ class MainModel(nn.Module):
         return normalized_output 
 
 class ModelHyper(nn.Module):
-    def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, num_classes):
+    def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
         super(ModelHyper, self).__init__()
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
@@ -96,34 +97,38 @@ class ModelHyper(nn.Module):
         self.dropout_input = dropout_input
         self.dropout_FC = dropout_FC
         self.dropout_lstm = dropout_lstm
-        self.self_attention = SelfAttention(2*hidden_dim)
+        self.self_attention = SelfAttention(2*hidden_dim, dropout_attention)
+        self.self_attention_sentence = SelfAttention(2*hidden_dim, dropout_attention)
+
         self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
-        self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm,dropout_input)
+        self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm_hyper,dropout_input_hyper)
         self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
         self.doc_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
         if torch.cuda.is_available():
             self.embbedding.to(device=torch.device('cuda'))
             self.metafor_classifier.to(device=torch.device('cuda'))
     def forward(self, inputs, lengths, doc_lengths):
+        start = time.time()
         squezeed = torch.cat((inputs), 0)
-        squezeed_lengths = torch.LongTensor([val for sublist in lengths for val in sublist])
+        squezeed_lengths = torch.FloatTensor([val for sublist in lengths for val in sublist])
         predicted = self.embbedding(squezeed, squezeed_lengths)
+        end = time.time()
+        print(end - start, ' First layer')
         #normalized_output = self.metafor_classifier(out_embedding)
-        predicted_docs = []
-        threeshold = 0
-        max_length_doc = max(doc_lengths)
-        for i,element in enumerate(doc_lengths):
-            doc = predicted[threeshold:threeshold+element]
-            threeshold += element
-            mean_doc = torch.div((doc.sum(dim=1).transpose(0,1)), torch.FloatTensor(lengths[i]), out=None).transpose(0,1)
-            amount_to_pad = max_length_doc - len(mean_doc)
-            pad_tensor = torch.zeros(amount_to_pad, mean_doc.shape[1])
-            padded_doc = torch.cat((mean_doc, pad_tensor), dim=0)
-            predicted_docs.append(padded_doc)
-        predicted_docs = torch.stack(predicted_docs)
+        averaged_docs = torch.div((predicted.sum(dim=1)), squezeed_lengths.view(-1,1), out=None)
+        predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
+        predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
+        end = time.time()
+        print(end - start, ' Average sentences and pad doc')
         out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
+        end = time.time()
+        print(end - start, ' Second Layer')
         prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
+        end = time.time()
+        print(end - start, ' Attention Layer')
         class_prediction = self.doc_classifier(prediction)
+        end = time.time()
+        print(end - start, ' Last Layer')
         return class_prediction 
 
 # Self-attention layer from https://gist.github.com/cbaziotis/94e53bdd6e4852756e0395560ff38aa4
