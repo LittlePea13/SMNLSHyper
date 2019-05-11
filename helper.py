@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from datasets import SentenceDataset,DocumentDataset
 import torch.utils.data as data_utils
-from Data.Metaphors.embeddings import extract_emb
 
 def evaluate(evaluation_dataloader, model, criterion, device):
     model.eval()
@@ -36,9 +35,8 @@ def evaluate_hyper(evaluation_dataloader, model, criterion, device):
     confusion_matrix = np.zeros((2, 2))
     for (eval_text, doc_len, eval_labels, eval_lengths) in evaluation_dataloader:
         if torch.cuda.is_available():
-            eval_text.to(device=device)
-            eval_lengths.to(device=device)
-            eval_labels.to(device=device)
+            doc_len = doc_len.to(device=device)
+            eval_labels = eval_labels.to(device=device)
         predicted = model(eval_text, eval_lengths, doc_len)
         total_eval_loss += criterion(predicted.view(-1, 2), eval_labels.view(-1))
         _, predicted_labels = torch.max(predicted.data, 1)
@@ -103,7 +101,7 @@ def get_metaphor_dataset(filename_data, filename_labels, batch_size):
 def get_document_dataset(filename_data, filename_labels, batch_size):
     data, labels = extract_emb(filename_data, filename_labels)
     dataset = DocumentDataset(data, labels, 200)
-    train_data, valid_data = train_valid_split(dataset)
+    train_data, valid_data = train_valid_split(dataset, split_fold=8)
     train_loader = data_utils.DataLoader(train_data, batch_size=batch_size, shuffle=True,
                                   collate_fn=DocumentDataset.collate_fn)
     val_loader = data_utils.DataLoader(valid_data, batch_size=batch_size, shuffle=True,
@@ -145,3 +143,12 @@ class GenHelper(data_utils.Dataset):
         return self.mother[self.mapping[index]]
     def __len__(self):
         return self.length
+
+def extract_emb(emb_file, lab_file):
+  labels = []
+  embeddings = []
+  labels = np.load(lab_file,allow_pickle=True)
+  embeddings = np.load(emb_file,allow_pickle=True)
+  labels=np.array([np.array(xi).astype(np.int) for xi in labels])
+  embeddings=np.array([np.array(xi) for xi in embeddings])
+  return embeddings, labels

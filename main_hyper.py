@@ -30,7 +30,7 @@ if __name__ == "__main__":
         model.to(device=device)
     nll_criterion = nn.NLLLoss()
     # Set up an optimizer for updating the parameters of the rnn_clf
-    met_model_optimizer = optim.Adam(model.parameters(), lr=0.01)
+    met_model_optimizer = optim.Adam(model.parameters(), lr=0.05)
     # Number of epochs (passes through the dataset) to train the model for.
     num_epochs = 5
 
@@ -44,9 +44,8 @@ if __name__ == "__main__":
         print("Starting epoch {}".format(epoch + 1))
         for (data, doc_len, labels, sen_len) in loader_dataset_hyp:
             if torch.cuda.is_available():
-                data.to(device=device)
-                lengths.to(device=device)
-                labels.to(device=device)
+                doc_len = doc_len.to(device=device)
+                labels = labels.to(device=device)
             start = time.time()
             predicted = model(data, sen_len, doc_len)
             end = time.time()
