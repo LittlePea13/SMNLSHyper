@@ -99,7 +99,6 @@ class ModelHyper(nn.Module):
         self.dropout_lstm = dropout_lstm
         self.self_attention = SelfAttention(2*hidden_dim, dropout_attention)
         self.self_attention_sentence = SelfAttention(2*hidden_dim, dropout_attention)
-
         self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
         self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm_hyper,dropout_input_hyper)
         self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
@@ -115,7 +114,8 @@ class ModelHyper(nn.Module):
         end = time.time()
         print(end - start, ' First layer')
         #normalized_output = self.metafor_classifier(out_embedding)
-        averaged_docs = torch.div((predicted.sum(dim=1)), squezeed_lengths.view(-1,1), out=None)
+        #averaged_docs = torch.div((predicted.sum(dim=1)), squezeed_lengths.view(-1,1), out=None)
+        averaged_docs, attention, weighted = self.self_attention_sentence(predicted, squezeed_lengths.int())
         predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
         predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
         end = time.time()

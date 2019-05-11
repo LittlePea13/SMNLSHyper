@@ -119,9 +119,11 @@ class DocumentDataset(Dataset):
         # embedding for each word is : elmo
         #if len(embedded_docs.shape) == 1:
         #    embedded_docs = embedded_docs.reshape((-1,1))
-        self.embedded_docs = embedded_docs
+        max_length_sen = [max([len(sentence) for sentence in element]) for element in embedded_docs]
+        indexes = np.argsort(max_length_sen)
+        self.embedded_docs = embedded_docs[indexes]
         # A list of ints, where each int is a label of the sentence at the corresponding index.
-        self.labels = labels
+        self.labels = labels[indexes]
         # Truncate examples that are longer than max_sequence_length.
         # Long sequences are expensive and might blow up GPU memory usage.
         self.max_sequence_length = max_sequence_length

@@ -1,6 +1,6 @@
 from Data.Metaphors.embeddings import extract_emb
 from model import BiLSTMEncoder,MainModel, ModelHyper
-from helper import evaluate, evaluate_train, get_metaphor_dataset, write_board, get_document_dataset, evaluate_train_hyper
+from helper import evaluate, evaluate_train, get_metaphor_dataset, write_board, get_document_dataset, evaluate_train_hyper,evaluate_hyper
 import torch.nn as nn
 import torch.optim as optim
 import torch
@@ -11,10 +11,10 @@ if __name__ == "__main__":
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # Define hyper parameters
-    batch_size = 64
+    batch_size = 16
     hidden_dim = 300
     
-    loader_dataset_hyp = get_document_dataset('Data/Hyperpartisan/hyp_embeds.npy','Data/Hyperpartisan/hyp_labels.npy',batch_size)
+    loader_dataset_hyp, loader_val_hyp = get_document_dataset('Data/Hyperpartisan/hyp_embeds.npy','Data/Hyperpartisan/hyp_labels.npy',batch_size)
 
     model = ModelHyper(embed_dim=1024, 
                         hidden_dim = hidden_dim, 
@@ -64,13 +64,14 @@ if __name__ == "__main__":
             print(end - start, ' optimize step')
             counter += 1
             write_board(writer,'Hyper/Train', precision, recall, f1, eval_accuracy, batch_loss.item(), counter)
-            '''if counter % 50 == 0:
-                avg_eval_loss, precision, recall, f1, eval_accuracy = evaluate(val_loader, model, nll_criterion, device)
-                write_board(writer,'Val', precision, recall, f1, eval_accuracy, avg_eval_loss, counter)
-                print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}.".format(counter, avg_eval_loss, eval_accuracy, precision, recall, f1))'''
+            if counter % 2 == 0:
+                avg_eval_loss, precision, recall, f1, eval_accuracy = evaluate_hyper(loader_val_hyp, model, nll_criterion, device)
+                write_board(writer,'Hyper/Val', precision, recall, f1, eval_accuracy, avg_eval_loss, counter)
+                print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}.".format(counter, avg_eval_loss, eval_accuracy, precision, recall, f1))
     print("First Training done!")
 
     '''    test_loader = get_metaphor_dataset('Data/Metaphors/VUA/vua_test_embeds.npy','Data/Metaphors/VUA/vua_test_labels.npy',batch_size)
     avg_test_loss, precision, recall, f1, test_accuracy = evaluate(test_loader, model, nll_criterion, device)
     write_board(writer,'Test', precision, recall, f1, test_accuracy, avg_test_loss, counter)'''
     writer.close()
+    torch.save(model.state_dict(), 'Model/hyper.pt')
