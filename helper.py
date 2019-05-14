@@ -7,13 +7,15 @@ def evaluate(evaluation_dataloader, model, criterion, device):
     model.eval()
     total_examples = 0
     total_eval_loss = 0
+    is_doc = False
+    doc_length = 1
     confusion_matrix = np.zeros((2, 2))
     for (eval_text, eval_lengths, eval_labels) in evaluation_dataloader:
         if torch.cuda.is_available():
-            eval_text.to(device=device)
-            eval_lengths.to(device=device)
-            eval_labels.to(device=device)
-        predicted = model(eval_text, eval_lengths)
+            eval_text = eval_text.to(device=device)
+            eval_lengths = eval_lengths.to(device=device)
+            eval_labels = eval_labels.to(device=device)
+        predicted, _ = model(is_doc, eval_text, eval_lengths, doc_length)
         total_eval_loss += criterion(predicted.view(-1, 2), eval_labels.view(-1))
         _, predicted_labels = torch.max(predicted.data, 2)
         total_examples += eval_lengths.size(0)
@@ -37,7 +39,7 @@ def evaluate_hyper(evaluation_dataloader, model, criterion, device):
         if torch.cuda.is_available():
             doc_len = doc_len.to(device=device)
             eval_labels = eval_labels.to(device=device)
-        predicted = model(eval_text, eval_lengths, doc_len)
+        _, predicted = model(True, eval_text, eval_lengths, doc_len)
         total_eval_loss += criterion(predicted.view(-1, 2), eval_labels.view(-1))
         _, predicted_labels = torch.max(predicted.data, 1)
         total_examples += doc_len.size(0)
