@@ -26,12 +26,12 @@ class BiLSTMEncoder(nn.Module):
                            batch_first=True)
         self.input_dropout = nn.Dropout(dropout_input)
     def forward(self, inputs, lengths):
-        batch_size = inputs.size()[1]
         embedded_input = self.input_dropout(inputs)
+
         (sorted_input, sorted_lengths, input_unsort_indices, _) = sort_batch_by_length(embedded_input, lengths)
         packed_input = pack_padded_sequence(sorted_input, sorted_lengths.data.tolist(), batch_first=True)
-        if torch.cuda.is_available():
-            packed_input.to(device=torch.device('cuda'))
+        # if torch.cuda.is_available():
+        #     packed_input = packed_input.to(device=torch.device('cuda'))
         embedding, _ = self.rnn(packed_input)
         embedding, _ = pad_packed_sequence(embedding, batch_first=True)
         embedding = embedding[input_unsort_indices]
