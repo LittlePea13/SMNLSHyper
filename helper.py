@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from datasets import SentenceDataset,DocumentDataset
+from datasets import SentenceDataset,DocumentDataset, AdaptSampler
 import torch.utils.data as data_utils
 
 def evaluate(evaluation_dataloader, model, criterion, device):

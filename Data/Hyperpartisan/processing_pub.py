@@ -11,12 +11,14 @@ class Namespace:
 
 import argparse
 import utils, processingresources, features
+import spacy
+spacy.load('en')
 default_F = "(hyperpartisan,)"
 args = Namespace(
-    A='articles-training-bypublisher-20181122.xml',
-    T='ground-truth-training-bypublisher-20181122.xml',
-    F='article_sent,title_sent',
-    outfile = 'output_pub.tsv'
+    A='articles-training-byarticle-20181122.xml',
+    T='ground-truth-training-byarticle-20181122.xml',
+    F='domain_sent,title_sent',#,article_sent',
+    outfile = 'output_art_len.tsv'
 )
 #parser = argparse.ArgumentParser()
 #parser.add_argument("-A", default='articles-training-byarticle-20181122', type=str, required=True, help="Article XML file")
@@ -39,6 +41,7 @@ if args.T is None:
 else:
     print("Loading targets")
     a2target, a2bias, a2url = utils.load_targets_file(args.T, cache=None)
+    print(a2target)
     pipeline = [processingresources.PrAddTarget(a2target, a2bias, a2url)]
 
 pipeline.extend([

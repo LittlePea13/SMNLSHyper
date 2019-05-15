@@ -83,9 +83,12 @@ if __name__ == "__main__":
             print(end - start, ' optimize step')
             counter += 1
             write_board(writer,'Hyper/Train', precision, recall, f1, eval_accuracy, batch_loss.item(), counter)
-            if counter % 2 == 0:
+            if counter % 5 == 0:
                 avg_eval_loss, precision, recall, f1, eval_accuracy = evaluate_hyper(loader_val_hyp, model, nll_criterion, device)
                 write_board(writer,'Hyper/Val', precision, recall, f1, eval_accuracy, avg_eval_loss, counter)
+                writer.add_pr_curve('xoxo', precision, recall, counter)
+                for name, param in model.named_parameters():
+                    writer.add_histogram(name, param.clone().cpu().data.numpy(), counter)
                 print("Iteration {}. Validation Loss {}. Validation Accuracy {}. Validation Precision {}. Validation Recall {}. Validation F1 {}.".format(counter, avg_eval_loss, eval_accuracy, precision, recall, f1))
     print("First Training done!")
 

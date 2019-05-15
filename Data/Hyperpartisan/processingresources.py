@@ -42,7 +42,7 @@ class PrArticle2Line:
                       format(type(val), val, self.features[i], article['id']))
         if self.addtargets:
             print(article['id'], article.get('target'),
-                  article.get('bias'), article.get('domain'),
+                  article.get('url'), article.get('text_len'),
                   "\t".join(strings), file=self.stream, sep="\t")
         else:
             print("\t".join(strings), file=self.stream)
@@ -64,7 +64,7 @@ class PrAddTarget:
         url = self.a2url[id]
         article['target'] = target
         article['bias'] = bias
-        article['url'] = url
+        article['url'] = tldextract.extract(url)[1]
 
 
 class PrAddTitle:
@@ -97,7 +97,7 @@ class PrAddText:
         article['pars'] = pars
         text = " ".join(pars)
         article['text'] = text
-
+        article['text_len'] = len(text.split())
 
 class PrRemovePars:
 
