@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from datasets import SentenceDataset,DocumentDataset
+from datasets import SentenceDataset,DocumentDataset, AdaptSampler
 import torch.utils.data as data_utils
 
 def evaluate(evaluation_dataloader, model, criterion, device):
@@ -104,10 +104,10 @@ def get_document_dataset(filename_data, filename_labels, batch_size):
     data, labels = extract_emb(filename_data, filename_labels)
     dataset = DocumentDataset(data, labels, 200)
     train_data, valid_data = train_valid_split(dataset, split_fold=8)
-    train_loader = data_utils.DataLoader(train_data, batch_size=batch_size, shuffle=True,
-                                  collate_fn=DocumentDataset.collate_fn)
-    val_loader = data_utils.DataLoader(valid_data, batch_size=batch_size, shuffle=True,
-                                  collate_fn=DocumentDataset.collate_fn)
+    train_loader = data_utils.DataLoader(train_data, batch_sampler=AdaptSampler(train_data.doc_lens,batch_size=25,max_size=40000),
+                              collate_fn=DocumentDataset.collate_fn)
+    val_loader = data_utils.DataLoader(valid_data, batch_sampler=AdaptSampler(valid_data.doc_lens,batch_size=25,max_size=40000),
+                              collate_fn=DocumentDataset.collate_fn)
     return train_loader, val_loader
 
 def write_board(writer, partition, precision, recall, f1, accuracy, loss, step):

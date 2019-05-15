@@ -4,6 +4,7 @@ import mmap
 from torch.utils.data import Dataset
 import torch.nn as nn
 from torch.autograd import Variable
+import random
 
 class SentenceDataset(Dataset):
     def __init__(self, embedded_text, labels, max_sequence_length=100):
@@ -122,6 +123,7 @@ class DocumentDataset(Dataset):
         max_length_sen = [max([len(sentence) for sentence in element]) for element in embedded_docs]
         indexes = np.argsort(max_length_sen)
         self.embedded_docs = embedded_docs[indexes]
+        self.doc_lens = [len(element)*max([len(sentence) for sentence in element]) for element in embedded_docs[indexes]]
         # A list of ints, where each int is a label of the sentence at the corresponding index.
         self.labels = labels[indexes]
         # Truncate examples that are longer than max_sequence_length.
@@ -201,10 +203,72 @@ class DocumentDataset(Dataset):
             # Add the padded example to our batch
             batch_lengths.append(length)
             batch_labels.append(label)
-            batch_sen_lengths.append(sen_len)
-
+            batch_sen_lengths.append(torch.FloatTensor(sen_len))
         # Stack the list of LongTensors into a single LongTensor
-        return (batch_padded_example_text,
+        return (torch.cat((batch_padded_example_text), 0),
                 torch.LongTensor(batch_lengths),
                 torch.LongTensor(batch_labels),
-                batch_sen_lengths)
+                torch.cat(batch_sen_lengths, 0))
+
+class Sampler(object):
+    r"""Base class for all Samplers.
+
+    Every Sampler subclass has to provide an __iter__ method, providing a way
+    to iterate over indices of dataset elements, and a __len__ method that
+    returns the length of the returned iterators.
+    """
+
+    def __init__(self, data_source):
+        pass
+
+    def __iter__(self):
+        raise NotImplementedError
+
+    def __len__(self):
+        raise NotImplementedError
+
+class AdaptSampler(Sampler):
+    r"""Wraps another sampler to yield a mini-batch of indices.
+
+    Args:
+        sampler (Sampler): Base sampler.
+        batch_size (int): Size of mini-batch.
+        drop_last (bool): If ``True``, the sampler will drop the last batch if
+            its size would be less than ``batch_size``
+
+    Example:
+        >>> list(BatchSampler(SequentialSampler(range(10)), batch_size=3, drop_last=False))
+        [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+        >>> list(BatchSampler(SequentialSampler(range(10)), batch_size=3, drop_last=True))
+        [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+    """
+
+    def __init__(self, lengths, batch_size,max_size):
+
+        self.lengths = lengths
+        self.batch_size = batch_size
+        self.max_size = max_size
+
+    def __iter__(self):
+        batch = []
+        for idx in range(len(self.lengths)):
+            batch.append(idx)
+            if sum(self.lengths[batch[0]:idx+1]) > self.max_size or len(batch) == self.batch_size:
+                last = batch.pop()
+                yield random.sample(batch, len(batch))
+                batch = [last]
+        if len(batch) > 0:
+            yield batch
+
+    def __len__(self):
+        batch = []
+        len_ = 0
+        for idx in range(len(self.lengths)):
+            batch.append(idx)
+            if sum(self.lengths[batch[0]:idx+1]) > self.max_size or len(batch) == self.batch_size:
+                last = batch.pop()
+                len_ += 1
+                batch = [last]
+        if len(batch) > 0:
+            len_ += 1
+        return len_
