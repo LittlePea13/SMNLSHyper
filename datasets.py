@@ -272,3 +272,99 @@ class AdaptSampler(Sampler):
         if len(batch) > 0:
             len_ += 1
         return len_
+
+
+class TestDocumentDataset(Dataset):
+    def __init__(self, embedded_docs, max_sequence_length=100):
+        """
+        :param embedded_text:
+        :param labels: a list of ints
+        :param max_sequence_length: an int
+        """
+        # A list of numpy arrays, where each inner numpy arrays is sequence_length * embed_dim
+        # embedding for each word is : elmo
+        #if len(embedded_docs.shape) == 1:
+        #    embedded_docs = embedded_docs.reshape((-1,1))
+        max_length_sen = [max([len(sentence) for sentence in element]) for element in embedded_docs]
+        #indexes = np.argsort(max_length_sen)
+        self.embedded_docs = embedded_docs
+        self.doc_lens = [len(element)*max([len(sentence) for sentence in element]) for element in embedded_docs]
+        # A list of ints, where each int is a label of the sentence at the corresponding index.
+        # Truncate examples that are longer than max_sequence_length.
+        # Long sequences are expensive and might blow up GPU memory usage.
+        self.max_sequence_length = max_sequence_length
+
+
+    def __getitem__(self, idx):
+        """
+        Return the Dataset example at index `idx`.
+        Returns
+        -------
+        example_text: numpy array
+        length: int
+            The length of the (possibly truncated) example_text.
+        example_label: int 0 or 1
+            The label of the example.
+        """
+        example_text = self.embedded_docs[idx]
+        sentences_lengths = [len(sentence) for sentence in example_text]
+        # Truncate the sequence if necessary fix this, now is doing documents
+        example_text = [text[:self.max_sequence_length] for text in example_text]
+        example_length = len(example_text)
+
+        return example_text, example_length, sentences_lengths
+
+    def __len__(self):
+        """
+        Return the number of examples in the Dataset.
+        """
+        return len(self.embedded_docs)
+
+    @staticmethod
+    def collate_fn(batch):
+        """
+        Given a list of examples (each from __getitem__),
+        combine them to form a single batch by padding.
+        Returns:
+        -------
+        batch_padded_example_text: LongTensor
+          LongTensor of shape (batch_size, longest_sequence_length) with the
+          padded text for each example in the batch.
+        length: LongTensor
+          LongTensor of shape (batch_size,) with the unpadded length of the example.
+        example_label: LongTensor
+          LongTensor of shape (batch_size,) with the label of the example.
+        """
+        batch_padded_example_text = []
+        batch_lengths = []
+        batch_sen_lengths = []
+        max_length = max([element[1] for element in batch])
+        #print(max(batch, key=lambda example: example[1]))
+        #print(max(batch, key=lambda example: example[2]))
+        #print(max_length)
+        #print(max(batch, key=lambda example: example[3]))
+        max_length_sen = max([max(element[2]) for element in batch])
+        # Iterate over each example in the batch
+        for text, length, sen_len in batch:
+            doc_sentences = []
+            # Unpack the example (returned from __getitem__)
+            for sentence in text:
+                amount_to_pad = max_length_sen - len(sentence)
+                sentence = torch.Tensor(sentence)
+                pad_tensor = torch.zeros(amount_to_pad, sentence.shape[1])
+                padded_sentence_text = torch.cat((sentence, pad_tensor), dim=0)
+                doc_sentences.append(padded_sentence_text)
+            '''amount_to_pad = max_length - length
+            for i in range(amount_to_pad):
+                pad_tensor = torch.zeros(max_length_sen, sentence.shape[1])
+                doc_sentences.append(pad_tensor)
+            sentences_len = torch.Tensor(sen_len)
+            padded_senlen = torch.cat((sentences_len, torch.zeros(amount_to_pad)), dim=0)'''
+            batch_padded_example_text.append(torch.stack(doc_sentences))
+            # Add the padded example to our batch
+            batch_lengths.append(length)
+            batch_sen_lengths.append(torch.FloatTensor(sen_len))
+        # Stack the list of LongTensors into a single LongTensor
+        return (torch.cat((batch_padded_example_text), 0),
+                torch.LongTensor(batch_lengths),
+                torch.cat(batch_sen_lengths, 0))
