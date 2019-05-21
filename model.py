@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
+from custom_lstm import BiLSTM_SOFT_Encoder
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -37,6 +38,18 @@ class BiLSTMEncoder(nn.Module):
         embedding = embedding[input_unsort_indices]
         return embedding
 
+class MetaphorModel(nn.Module):
+    def __init__(self, hidden_dim, dropout_FC, num_classes):
+        super(MetaphorModel, self).__init__()
+
+        self.hidden_dim = hidden_dim
+        self.dropout_FC = dropout_FC
+        self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
+          
+    def forward(self, out_embedding, lengths):
+        normalized_output = self.metafor_classifier(out_embedding)
+        return normalized_output
+
 class Metaphor(nn.Module):
     def __init__(self, dropout, num_classes, hidden_dim):
         super(Metaphor, self).__init__()
@@ -53,7 +66,7 @@ class Metaphor(nn.Module):
 
 class Hyperpartisan(nn.Module):
     def __init__(self, dropout, num_classes, hidden_dim):
-        super(Metaphor, self).__init__()
+        super(Hyperpartisan, self).__init__()
         self.fcl = nn.Linear(hidden_dim*2, num_classes)
         self.linear_dropout = nn.Dropout(dropout)
 
@@ -134,53 +147,64 @@ class ModelHyper(nn.Module):
         print(end - start, ' Last Layer')
         return class_prediction 
 
-class HyperModel1(nn.Module):
+class HyperModel(nn.Module):
     
-    def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
+    def __init__(self, hidden_dim, layers, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
        
-        super(HyperModel1, self).__init__()
+        super(HyperModel, self).__init__()
         
         self.hidden_dim = hidden_dim
         self.layers = layers
         self.dropout_FC = dropout_FC
-        self.dropout_lstm = dropout_lstm
-        self.dropout_input = dropout_input
-        self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
         self.self_attention = SelfAttention(2*hidden_dim, dropout_attention)
         self.self_attention_sentence = SelfAttention(2*hidden_dim, dropout_attention)
         self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm_hyper,dropout_input_hyper)
-        self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
         self.doc_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
-        if torch.cuda.is_available():
-            self.embbedding.to(device = torch.device('cuda'))
-            self.metafor_classifier.to(device=torch.device('cuda'))
-    
-    def forward(self, squezeed, squezeed_lengths, doc_lengths):
+
+    def forward(self, predicted, squezeed_lengths = torch.LongTensor(1).to(device=torch.device('cuda')), doc_lengths = torch.LongTensor(1).to(device=torch.device('cuda'))):
         
         start = time.time()
-        if torch.cuda.is_available():
-            squezeed = squezeed.to(device=torch.device('cuda'))
-            squezeed_lengths = squezeed_lengths.to(device=torch.device('cuda'))
-        predicted = self.embbedding(squezeed, squezeed_lengths)
         end = time.time()
-#         print(end - start, ' First layer')
+        print(end - start, ' First layer')
 
         averaged_docs, attention, weighted = self.self_attention_sentence(predicted, squezeed_lengths.int())
         predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
         predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
         end = time.time()
-#         print(end - start, ' Average sentences and pad doc')
+        print(end - start, ' Average sentences and pad doc')
         out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
         end = time.time()
-#         print(end - start, ' Second Layer')
+        print(end - start, ' Second Layer')
         prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
         end = time.time()
-#         print(end - start, ' Attention Layer')
+        print(end - start, ' Attention Layer')
         class_prediction = self.doc_classifier(prediction)
         end = time.time()
-#         print(end - start, ' Last Layer')
+        print(end - start, ' Last Layer')
         return class_prediction 
 
+class HyperSoftModel(nn.Module):
+    
+    def __init__(self, hidden_dim, layers, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
+       
+        super(HyperSoftModel, self).__init__()
+        
+        self.hidden_dim = hidden_dim
+        self.layers = layers
+        self.dropout_FC = dropout_FC
+        self.self_attention = SelfAttention(2*hidden_dim, dropout_attention)
+        self.self_attention_sentence = SelfAttention(hidden_dim, dropout_attention)
+        self.doc_embbedding = BiLSTMEncoder(hidden_dim,hidden_dim,layers,dropout_lstm_hyper,dropout_input_hyper)
+        self.doc_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
+    
+    def forward(self, predicted, squezeed_lengths, doc_lengths):
+        averaged_docs, attention, weighted = self.self_attention_sentence(predicted, squezeed_lengths.int())
+        predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
+        predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
+        out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
+        prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
+        class_prediction = self.doc_classifier(prediction)
+        return class_prediction
 
 # Self-attention layer from https://gist.github.com/cbaziotis/94e53bdd6e4852756e0395560ff38aa4
 class SelfAttention(nn.Module):
@@ -301,3 +325,87 @@ def sort_batch_by_length(tensor: torch.Tensor, sequence_lengths: torch.Tensor):
     _, reverse_mapping = permutation_index.sort(0, descending=False)
     restoration_indices = index_range.index_select(0, reverse_mapping)
     return sorted_tensor, sorted_sequence_lengths, restoration_indices, permutation_index
+
+class multitask_soft_model(nn.Module):
+  
+  def __init__(self, encoder_param, hyper_param, meta_param):
+    
+    super(multitask_soft_model, self).__init__()
+
+    self.embedding = BiLSTM_SOFT_Encoder(embed_dim = encoder_param['embed_dim'],
+                                    hidden_dim = encoder_param['hidden_dim'],
+                                    layers = encoder_param['layers'],
+                                    dropout_lstm = encoder_param['dropout_lstm'],
+                                    dropout_input = encoder_param['dropout_input'])
+    
+    self.embedding.to(device = 'cuda')
+    self.metaphor_model = MetaphorModel(hidden_dim = meta_param['hidden_dim'], 
+                                    dropout_FC = meta_param['dropout_FC'],#0.1,
+                                    num_classes = 2)
+    
+    self.hyper_model = HyperSoftModel(hidden_dim = hyper_param['hidden_dim'],
+                                  layers = hyper_param['layers'],
+                      dropout_FC=hyper_param['dropout_FC'],
+                      dropout_lstm_hyper = hyper_param['dropout_lstm_hyper'],
+                      dropout_input_hyper = hyper_param['dropout_lstm_hyper'],
+                      dropout_attention = hyper_param['dropout_lstm_hyper'],
+                      num_classes = 2)
+
+    
+  def forward(self, input_data, length_data = torch.LongTensor(1).cuda, length_doc = torch.LongTensor(1), is_doc = True):
+
+    if torch.cuda.is_available():
+        input_data = input_data.to(device=torch.device('cuda'))
+        length_data = length_data.to(device=torch.device('cuda'))
+
+
+    out_embedding_meta, out_embedding_hyper = self.embedding(input_data, length_data,is_doc)
+    if torch.cuda.is_available():
+        out_embedding_meta = out_embedding_meta.to(device = torch.device('cuda'))
+    meta_pred = self.metaphor_model(out_embedding_meta, length_data)
+    if is_doc:
+        if torch.cuda.is_available():
+            length_doc = length_doc.to(device=torch.device('cuda'))
+        hyp_pred = self.hyper_model(out_embedding_hyper, length_data, length_doc)
+    else:
+        hyp_pred = None
+    
+    return meta_pred, hyp_pred
+
+class multitask_model(nn.Module):
+  def __init__(self, encoder_param, hyper_param, meta_param):
+    super(multitask_model, self).__init__()
+    self.embedding = BiLSTMEncoder(embed_dim = encoder_param['embed_dim'],
+                                    hidden_dim = encoder_param['hidden_dim'],
+                                    layers = encoder_param['layers'],
+                                    dropout_lstm = encoder_param['dropout_lstm'],
+                                    dropout_input = encoder_param['dropout_input'])
+    self.metaphor_model = MetaphorModel(hidden_dim = meta_param['hidden_dim'], 
+                                    dropout_FC = meta_param['dropout_FC'],#0.1,
+                                    num_classes = 2)
+    self.hyper_model = HyperModel(hidden_dim = hyper_param['hidden_dim'],
+                                  layers = hyper_param['layers'],
+                      dropout_FC=hyper_param['dropout_FC'],
+                      dropout_lstm_hyper = hyper_param['dropout_lstm_hyper'],
+                      dropout_input_hyper = hyper_param['dropout_lstm_hyper'],
+                      dropout_attention = hyper_param['dropout_lstm_hyper'],
+                      num_classes = 2)
+  def forward(self, input_data, length_data = torch.LongTensor(1), length_doc = torch.LongTensor(1), is_doc = True):
+
+    if torch.cuda.is_available():
+        input_data = input_data.to(device=torch.device('cuda'))
+        length_data = length_data.to(device=torch.device('cuda'))
+
+    out_embedding = self.embedding(input_data, length_data)
+    if torch.cuda.is_available():
+        out_embedding = out_embedding.to(device = torch.device('cuda'))
+
+    meta_pred = self.metaphor_model(out_embedding, length_data)
+    if is_doc:
+        if torch.cuda.is_available():
+            length_doc = length_doc.to(device=torch.device('cuda'))
+        hyp_pred = self.hyper_model(out_embedding, length_data, length_doc)
+    else:
+        hyp_pred = None
+    
+    return meta_pred, hyp_pred

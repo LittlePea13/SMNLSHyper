@@ -45,13 +45,14 @@ def test_model(args):
         predicted = model(eval_text, eval_lengths, doc_len)
         _, predicted_labels = torch.max(predicted.data, 1)
         predict_list.append(predicted_labels)
-        predict_confidence.append(torch.exp(predicted.data))
+        predict_confidence.append(torch.exp(predicted.data).data)
         total_examples += doc_len.size(0)
-    print(predicted_labels)
-    print(all_doc_ids)
+    predict_confidence = torch.cat(predict_confidence, dim=0)
+    # predicted_labels = [predict for element in predicted_labels for predict in element]
     # Set the model back to train mode, which activates dropout again.
     print('Number of predictions ',len(predict_list))
-    all_pred = toEvaluationFormat(all_doc_ids, predict_confidence[0])
+    print(predict_confidence.shape, 'results')
+    all_pred = toEvaluationFormat(all_doc_ids, predict_confidence)
     with open(args.out, 'w') as fo:
         for item in all_pred:
             fo.write(item)

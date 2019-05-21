@@ -15,7 +15,7 @@ def evaluate(evaluation_dataloader, model, criterion, device):
             eval_text = eval_text.to(device=device)
             eval_lengths = eval_lengths.to(device=device)
             eval_labels = eval_labels.to(device=device)
-        predicted, _ = model(is_doc, eval_text, eval_lengths, doc_length)
+        predicted, _ = model(eval_text, eval_lengths, doc_length, is_doc)
         total_eval_loss += criterion(predicted.view(-1, 2), eval_labels.view(-1))
         _, predicted_labels = torch.max(predicted.data, 2)
         total_examples += eval_lengths.size(0)
@@ -39,9 +39,9 @@ def evaluate_hyper(evaluation_dataloader, model, criterion, device):
         if torch.cuda.is_available():
             doc_len = doc_len.to(device=device)
             eval_labels = eval_labels.to(device=device)
-        _, predicted = model(True, eval_text, eval_lengths, doc_len)
+        _, predicted = model(eval_text, eval_lengths, doc_len, True)
         total_eval_loss += criterion(predicted.view(-1, 2), eval_labels.view(-1))
-        _, predicted_labels = torch.max(predicted.data, 1)
+        _, predicted_labels = torch.max(predicted.view(-1,2).data, 1)
         total_examples += doc_len.size(0)
         confusion_matrix = update_hyper_confusion_matrix(confusion_matrix, predicted_labels, eval_labels.data)
     average_eval_loss = total_eval_loss / evaluation_dataloader.__len__()
@@ -65,9 +65,7 @@ def evaluate_train(labels, predictions, lengths):
     return precision, recall, f1, accuracy
 
 def evaluate_train_hyper(labels, predictions):
-    _, predicted_labels = torch.max(predictions.data, 1)
-    print(predicted_labels)
-    print(labels)
+    _, predicted_labels = torch.max(predictions.view(-1,2).data, 1)
     confusion_matrix = np.zeros((2, 2))
     confusion_matrix = update_hyper_confusion_matrix(confusion_matrix, predicted_labels, labels.data)
     precision = 100 * confusion_matrix[1, 1] / np.sum(confusion_matrix[1])
@@ -100,15 +98,11 @@ def get_metaphor_dataset(filename_data, filename_labels, batch_size):
     return data_utils.DataLoader(dataset, batch_size=batch_size, shuffle=True,
                                   collate_fn=SentenceDataset.collate_fn)
 
-def get_document_dataset(filename_data, filename_labels, batch_size):
+def get_document_dataset(filename_data, filename_labels, batch_size, max_size = 20000):
     data, labels = extract_emb(filename_data, filename_labels)
     dataset = DocumentDataset(data, labels, 200)
-    train_data, valid_data = train_valid_split(dataset, split_fold=8)
-    train_loader = data_utils.DataLoader(train_data, batch_sampler=AdaptSampler(train_data.doc_lens,batch_size=25,max_size=40000),
+    return data_utils.DataLoader(dataset, batch_sampler=AdaptSampler(dataset.doc_lens, batch_size=batch_size,max_size=max_size),
                               collate_fn=DocumentDataset.collate_fn)
-    val_loader = data_utils.DataLoader(valid_data, batch_sampler=AdaptSampler(valid_data.doc_lens,batch_size=25,max_size=40000),
-                              collate_fn=DocumentDataset.collate_fn)
-    return train_loader, val_loader
 
 def write_board(writer, partition, precision, recall, f1, accuracy, loss, step):
     writer.add_scalar(partition + '/F1', f1, (step))
@@ -117,12 +111,7 @@ def write_board(writer, partition, precision, recall, f1, accuracy, loss, step):
     writer.add_scalar(partition + '/accuracy', accuracy, (step))
     writer.add_scalar(partition + '/Loss', loss, (step))
 
-def train_valid_split(ds, split_fold=10, random_seed=None):
-    '''
-    This is a pytorch generic function that takes a data.Dataset object and splits it to validation and training
-    efficiently.
-    :return:
-    '''
+'''def train_valid_split(ds, split_fold=10, random_seed=None):
     if random_seed!=None:
         np.random.seed(random_seed)
     dslen=len(ds)
@@ -145,7 +134,7 @@ class GenHelper(data_utils.Dataset):
         return self.mother[self.mapping[index]]
     def __len__(self):
         return self.length
-
+'''
 def extract_emb(emb_file, lab_file):
   labels = []
   embeddings = []

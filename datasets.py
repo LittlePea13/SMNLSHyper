@@ -248,6 +248,7 @@ class AdaptSampler(Sampler):
         self.lengths = lengths
         self.batch_size = batch_size
         self.max_size = max_size
+        self.batch = 0
 
     def __iter__(self):
         batch = []
@@ -273,6 +274,33 @@ class AdaptSampler(Sampler):
             len_ += 1
         return len_
 
+    def __next__(self):
+        if self.batch==0:
+            batch = []
+            for idx in range(len(self.lengths)):
+                batch.append(idx)
+                if sum(self.lengths[batch[0]:idx+1]) > self.max_size or len(batch) == self.batch_size:
+                    last = batch.pop()
+                    self.batch = idx
+                    return random.sample(batch, len(batch))
+                    batch = [last]
+            if len(batch) > 0:
+                self.batch = 0
+                return batch
+        elif self.batch != 'max':
+            batch = [self.batch]
+            for idx in range(self.batch+1,len(self.lengths)):
+                batch.append(idx)
+                if sum(self.lengths[batch[0]:idx+1]) > self.max_size or len(batch) == self.batch_size:
+                    last = batch.pop()
+                    self.batch = idx
+                    return random.sample(batch, len(batch))
+            if len(batch) > 0:
+                self.batch = 0
+                return batch
+        else:
+            self.batch = 0
+            #raise StopIteration
 
 class TestDocumentDataset(Dataset):
     def __init__(self, embedded_docs, max_sequence_length=100):
