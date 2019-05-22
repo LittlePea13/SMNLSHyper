@@ -8,6 +8,7 @@ from torch.nn.utils.rnn import pad_packed_sequence
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from custom_lstm import BiLSTM_SOFT_Encoder
+import csv
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -161,28 +162,26 @@ class HyperModel(nn.Module):
         self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm_hyper,dropout_input_hyper)
         self.doc_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
 
-    def forward(self, predicted, squezeed_lengths = torch.LongTensor(1).to(device=torch.device('cuda')), doc_lengths = torch.LongTensor(1).to(device=torch.device('cuda'))):
-        
-        start = time.time()
-        end = time.time()
-        print(end - start, ' First layer')
-
+    def forward(self, predicted, squezeed_lengths, doc_lengths):
         averaged_docs, attention, weighted = self.self_attention_sentence(predicted, squezeed_lengths.int())
+        sigm = nn.Sigmoid()
+        soft = nn.Softmax()
+        attention_list = normalize(soft(squezeed_lengths * attention.transpose(0,1)).transpose(0,1)).tolist()
+
         predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
         predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
-        end = time.time()
-        print(end - start, ' Average sentences and pad doc')
         out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
-        end = time.time()
-        print(end - start, ' Second Layer')
         prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
-        end = time.time()
-        print(end - start, ' Attention Layer')
+        attention_list_sen = normalize(sigm(attention)).tolist()
+        with open('attention_stuff.csv', 'w') as csvfile:
+            writer = csv.writer(csvfile, delimiter='\t')
+            for i, j in zip(attention_list, attention_list_sen):
+                writer.writerow((str(i), j))
         class_prediction = self.doc_classifier(prediction)
-        end = time.time()
-        print(end - start, ' Last Layer')
         return class_prediction 
-
+def normalize(x):
+    x_normed = (x-  x.min(0, keepdim=True)[0]) / (x.max(0, keepdim=True)[0]-  x.min(0, keepdim=True)[0])
+    return x_normed
 class HyperSoftModel(nn.Module):
     
     def __init__(self, hidden_dim, layers, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
@@ -199,10 +198,19 @@ class HyperSoftModel(nn.Module):
     
     def forward(self, predicted, squezeed_lengths, doc_lengths):
         averaged_docs, attention, weighted = self.self_attention_sentence(predicted, squezeed_lengths.int())
+        sigm = nn.Sigmoid()
+        soft = nn.Softmax()
+        attention_list = normalize(soft(squezeed_lengths * attention.transpose(0,1)).transpose(0,1)).tolist()
         predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
         predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
         out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
         prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
+        attention_list_sen = normalize(sigm(attention)).tolist()
+
+        with open('attention_stuff.csv', 'w') as csvfile:
+            writer = csv.writer(csvfile, delimiter='\t')
+            for i, j in zip(attention_list, attention_list_sen):
+                writer.writerow((str(i), j))
         class_prediction = self.doc_classifier(prediction)
         return class_prediction
 
@@ -338,7 +346,6 @@ class multitask_soft_model(nn.Module):
                                     dropout_lstm = encoder_param['dropout_lstm'],
                                     dropout_input = encoder_param['dropout_input'])
     
-    self.embedding.to(device = 'cuda')
     self.metaphor_model = MetaphorModel(hidden_dim = meta_param['hidden_dim'], 
                                     dropout_FC = meta_param['dropout_FC'],#0.1,
                                     num_classes = 2)
@@ -352,7 +359,7 @@ class multitask_soft_model(nn.Module):
                       num_classes = 2)
 
     
-  def forward(self, input_data, length_data = torch.LongTensor(1).cuda, length_doc = torch.LongTensor(1), is_doc = True):
+  def forward(self, input_data, length_data, length_doc , is_doc = True):
 
     if torch.cuda.is_available():
         input_data = input_data.to(device=torch.device('cuda'))

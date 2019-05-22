@@ -2,28 +2,86 @@
 Classes representing "processing resources"
 """
 
-import preprocessing
 import xml.etree.ElementTree
-import tldextract
 from collections import Counter
-import features
 import json
 from numbers import Number
-import htmlparser
-import sys
+from html.parser import HTMLParser
 
+import sys
+import xml.etree.ElementTree
+
+import re
+
+txt_tospace1 = re.compile('&#160;')
+FEATURES = [
+]
+
+
+def doc2features(doc, features):
+    """
+    Extract the features from the document. Each feature is either just the name
+    or a tuple of (name,flag,type) where flag indicates if the feature should get
+    selected. This returns the features in their original representation.
+    :param doc: to extract the features from
+    :param features: list of feature names or 3-tuples
+    :return: list of values for the selected features
+    """
+    ret = []
+    for f in features:
+        if isinstance(f, str):
+            val = doc.get(f)
+            ret.append(val)
+        else:
+            name, flag, ftype = f
+            if flag:
+                val = doc.get(name)
+                ret.append(val)
+    return ret
+
+def features2use(features):
+    """
+    Return just those features which have flag true or are just the name, not the tuple
+    :param features:
+    :return:
+    """
+    ret = []
+    for f in features:
+        if isinstance(f, str):
+            ret.append(f)
+        else:
+            name, flag, ftype = f
+            if flag:
+                ret.append(f)
+    return ret
+
+def cleantext(text):
+    '''Clean the text extracted from XML.'''
+    text = text.replace("&amp;", "&")
+    text = text.replace("&gt;", ">")
+    text = text.replace("&lt;", "<")
+    text = text.replace("<p>", " ")
+    text = text.replace("</p>", " ")
+    text = text.replace(" _", " ")
+    text = text.replace("–", "-")
+    text = text.replace("”", "\"")
+    text = text.replace("“", "\"")
+    text = text.replace("’", "'")
+
+    text, _ = txt_tospace1.subn(' ', text)
+    return text
 
 class PrArticle2Line:
 
     def __init__(self, stream, featureslist, addtargets=True):
         self.stream = stream
-        self.features = features.features2use(featureslist)
+        self.features = features2use(featureslist)
         self.mp_able = False
         self.addtargets = addtargets
         self.need_et = False
 
     def __call__(self, article, **kwargs):
-        values = features.doc2features(article, self.features)
+        values = doc2features(article, self.features)
         strings = []
         for i in range(len(values)):
             val = values[i]
@@ -55,7 +113,7 @@ class PrText2Line:
         self.need_et = False
         self.features = featureslist
     def __call__(self, article, **kwargs):
-        values = features.doc2features(article, self.features)
+        values = doc2features(article, self.features)
         strings = text
         print(text)
         print("\t".join(strings), file=self.stream)
@@ -89,8 +147,83 @@ class PrAddTitle:
     def __call__(self, article, **kwargs):
         element = article['et']
         attrs = element.attrib
-        title = preprocessing.cleantext(attrs["title"])
+        title = cleantext(attrs["title"])
         article['title'] = title
+
+class MyHTMLParser(HTMLParser):
+
+    def __init__(self):
+        kwargs = {}
+        HTMLParser.__init__(self, **kwargs)
+        self.ignore = False
+        self.data = []
+        self.p = []
+
+    def finishp(self):
+        if len(self.p) > 0:
+            self.data.append(self.p)
+            self.p = []
+
+    def handle_starttag(self, tag, attrs):
+        # print("Encountered a start tag:", tag)
+        if tag in ['script', 'style']:
+            self.ignore = True
+        elif tag in ['p', 'br']:
+            self.finishp()
+        # any tags that need to get repalced by space?
+        # elif tag in ['???']:
+        #     self.p.append(" ")
+
+    def handle_endtag(self, tag):
+        # print("Encountered an end tag :", tag)
+        if tag in ['script', 'style']:
+            self.ignore = False
+        elif tag in ['p', 'br']:
+            self.finishp()
+        # any tags that need to get repalced by space?
+        # elif tag in ['???']:
+        #     self.p.append(" ")
+
+    def handle_startendtag(self, tag, attrs):
+        # print("Encountered a startend tag:", tag)
+        if tag in ['p', 'br']:
+            self.finishp()
+
+    def handle_data(self, data):
+        # print("Encountered some data  :", data)
+        if not self.ignore:
+            self.p.append(data)
+
+    def close(self):
+        HTMLParser.close(self)
+        self.finishp()
+
+    def reset(self):
+        HTMLParser.reset(self)
+        self.data = []
+        self.p = []
+
+    def cleanparagraph(self, text):
+        """
+        How to do basic cleaning up of the text in each paragraph
+        :return:
+        """
+        text = cleantext(text)
+        text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        text = ' '.join(text.split()).strip()
+        return text
+
+    def paragraphs(self):
+        """
+        Convert collected data to paragraphs
+        """
+        pars = []
+        for par in self.data:
+            if len(par) > 0:
+                text = self.cleanparagraph(''.join(par)).strip()
+                if text:
+                    pars.append(text)
+        return pars
 
 
 class PrAddText:
@@ -102,7 +235,7 @@ class PrAddText:
 
     def __call__(self, article, **kwargs):
         if self.parser is None:
-            self.parser = htmlparser.MyHTMLParser()
+            self.parser = MyHTMLParser()
         self.parser.reset()
         self.parser.feed(article['xml'])
         self.parser.close()

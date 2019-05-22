@@ -104,3 +104,32 @@ def process_articles_xml(articlesfile, functionlist, maxn=None, **kwargs):
                 print("Stopping after maximum number of articles: ", maxn, file=sys.stderr)
                 break
     return nprocessed, nerror
+
+def process_text(text, functionlist, maxn=None, **kwargs):
+    """
+    Process the given article XML file and run the list of closures on each article.
+    This always creates an initial article representation that only contains the
+    article-XML as 'xml' and the id as 'id' before invoking the first closure.
+    Instead of a closure it could also be any class that implements __call__
+    All cosures should accept the following arguments: the article representation,
+    and arbitrary **kwargs.
+    All closure should return true if the article was processed successfully or false
+    if there was an error.
+    :return: a tuple with the total number of articles and number of errors
+    """
+    if len(functionlist) == 0:
+        raise Exception("Need at least one function to run in the pipeline list")
+    nprocessed = 0
+    nerror = 0
+    debug = kwargs.get("debug")
+
+    article = {
+        'id': 1,
+        'xml': text,
+        'published-at': 'published',
+        'et': 'element'
+    }
+    nerror += run_pipeline(functionlist, article, **kwargs)
+    del article['et']
+
+    return nprocessed, nerror

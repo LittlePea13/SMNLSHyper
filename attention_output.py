@@ -1,6 +1,6 @@
     
 from Data.Metaphors.embeddings import extract_emb
-from model import BiLSTMEncoder,MainModel, ModelHyper, multitask_model, multitask_soft_model
+from model import BiLSTMEncoder,MainModel, ModelHyper, multitask_model,multitask_soft_model
 from helper import evaluate, evaluate_train, get_metaphor_dataset, write_board, get_document_dataset, evaluate_train_hyper,evaluate_hyper
 import torch.nn as nn
 import torch.optim as optim
@@ -19,14 +19,14 @@ def test_model(args):
     encoder_param = trained_model['encoderparameters']
     meta_param = trained_model['metaparameters']
 
-    if args.multi_model ==  0:
+    if args.multi_model ==  True:
         model = multitask_soft_model(encoder_param, hyper_param, meta_param)
     else:
         model = multitask_model(encoder_param, hyper_param, meta_param)
     data = np.load('hyp_embeds.npy',allow_pickle=True)
     data = np.array([np.array(xi) for xi in data])
     dataset = TestDocumentDataset(data[0], 200)
-    evaluation_dataloader = data_utils.DataLoader(dataset, batch_size=20,
+    evaluation_dataloader = data_utils.DataLoader(dataset, batch_size=1,
                               collate_fn=TestDocumentDataset.collate_fn, shuffle=False)
     model.eval()
     all_doc_ids = range(0,len(data[0]))
@@ -38,41 +38,48 @@ def test_model(args):
     for (eval_text, doc_len, eval_lengths) in evaluation_dataloader:
         if torch.cuda.is_available():
             doc_len = doc_len.to(device=device)
-        predicted_meta,predicted  = model(eval_text, eval_lengths, doc_len)
-        _, predicted_labels = torch.max(predicted.data, 1)
+        predicted_meta, predicted = model(eval_text, eval_lengths, doc_len, True)
+        print(predicted_meta.shape)
+        _, predicted_labels = torch.max(predicted.view(-1,2).data, 1)
         predict_list.append(predicted_labels)
-        predict_confidence.append(torch.exp(predicted.data).data)
+        predict_confidence.append(torch.exp(predicted.view(-1,2).data).data)
         total_examples += doc_len.size(0)
     predict_confidence = torch.cat(predict_confidence, dim=0)
     # predicted_labels = [predict for element in predicted_labels for predict in element]
     # Set the model back to train mode, which activates dropout again.
     print('Number of predictions ',len(predict_list))
+
     print(predict_confidence.shape, 'results')
-    all_pred = toEvaluationFormat(all_doc_ids, predict_confidence)
-    with open(args.out, 'w') as fo:
-        for item in all_pred:
-            fo.write(item)
-
-def toEvaluationFormat(all_doc_ids, all_prediction):
-    evaluationFormatList = []
-    for i in range(len(all_doc_ids)):
-        current_doc_id = all_doc_ids[i]
-        current_prob = all_prediction[i][0]
-        #current_prob = all_prediction[i]
-        print(current_prob)
-        if current_prob > 0.5:
-            current_pred = 'false'
-        else:
-            current_prob = 1 - current_prob
-            current_pred = 'true'
-        evaluationFormat = str(current_doc_id).zfill(7) + ' ' + str(current_pred) + ' ' + str(current_prob) + '\n'
-        evaluationFormatList.append(evaluationFormat)
-    return evaluationFormatList
-
+    import ast
+    import csv
+    predicted_meta = torch.exp(predicted_meta[:,:,1]).tolist()
+    activation_maps = []
+    activation_maps_words = []
+    activation_maps_sen = []
+    with open('attention_stuff.csv','r') as csvinput:
+        with open('output.csv', 'w') as csvoutput:
+            with open('Att_article.txt', 'r') as textfile:
+                writer = csv.writer(csvoutput, delimiter='\t', lineterminator='\n')
+                reader = csv.reader(csvinput, delimiter='\t')
+                text = csv.reader(textfile, delimiter=' ', lineterminator='\n')
+                all = []
+                for i, row in enumerate(zip(reader,text)):
+                    new_row = []
+                    #print(zip(row[0][0][:len(row[1])],row[1]))
+                    #new_row.append(predicted_meta[i])
+                    activation_maps_words.append(list(zip(row[1], ast.literal_eval(row[0][0])[:len(row[1])])))
+                    new_row.append(list(zip(row[1], ast.literal_eval(row[0][0])[:len(row[1])])))#,predicted_meta[i])))
+                    new_row.append(row[0][1])
+                    activation_maps_sen.append(row[0][1])
+                    all.append(new_row)
+        
+                writer.writerows(all)
+    activation_maps = list(zip(activation_maps_words, activation_maps_sen))            
+    return activation_maps 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-model", default='hyper.pt', type=str, required=True, help="Article XML file")
-    parser.add_argument("-multi_model", default=0, type=bool, required=False, help="Article XML file")
+    parser.add_argument("-multi_model", default=True, type=bool, required=False, help="Article XML file")
     parser.add_argument("-out", type=str, help="Output (tsv) file")
     args = parser.parse_args()
     test_model(args)
