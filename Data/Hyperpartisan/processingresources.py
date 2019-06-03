@@ -47,6 +47,19 @@ class PrArticle2Line:
         else:
             print("\t".join(strings), file=self.stream)
 
+class PrText2Line:
+
+    def __init__(self, stream, featureslist):
+        self.stream = stream
+        self.mp_able = False
+        self.need_et = False
+        self.features = featureslist
+    def __call__(self, article, **kwargs):
+        values = features.doc2features(article, self.features)
+        strings = text
+        print(text)
+        print("\t".join(strings), file=self.stream)
+
 
 class PrAddTarget:
 
@@ -95,7 +108,9 @@ class PrAddText:
         self.parser.close()
         pars = self.parser.paragraphs()
         article['pars'] = pars
+        print(pars)
         text = " ".join(pars)
+        print(text)
         article['text'] = text
 
 
@@ -126,6 +141,24 @@ class PrFilteredText:
         tokens.append("<sep_t2d>")
         if article.get('link_domains_all'):
             tokens.extend(["DOMAIN_" + d for d in article['link_domains']])
+        tokens.append("<sep_d2a>")
+        tokens.extend(nlp.filter_tokens([t[0] for sent in text_tokens for t in sent]))
+        token_string = " ".join(tokens)
+        article['text_all_filtered'] = token_string
+
+class PrFilteredTextAtt:
+    """
+    Calculate the single filtered text field text_all_filtered, must already have nlp
+    """
+
+    def __init__(self):
+        self.mp_able = True
+        self.need_et = False
+
+    def __call__(self, article, **kwargs):
+        import nlp
+        tokens = nlp.filter_tokens(article)
+        tokens.append("<sep_t2d>")
         tokens.append("<sep_d2a>")
         tokens.extend(nlp.filter_tokens([t[0] for sent in text_tokens for t in sent]))
         token_string = " ".join(tokens)
@@ -216,3 +249,75 @@ class PrSeqSentences:
         article['article_sent'] = article_sent
         article['domain_sent'] = domain_sent
         article['title_sent'] = title_sent
+
+
+class PrNlpSpacy01Att:
+    """
+    Tokenise and POS-tag the title and article.
+    The title gets converted into a list of list word, POS, lemma.
+    The article gets converted into a list of
+    sentences containing a list of lists word, POS, lemma for the sentence.
+    :return:
+    """
+
+    def __init__(self):
+        import spacy
+        self.mp_able = True
+        self.initialized = False
+        self.need_et = False
+        self.nlp = None
+
+    def initialize(self):
+        if self.initialized:
+            return
+        import spacy
+        self.nlp = spacy.load("en_core_web_sm", disable=["parser"])
+        self.nlp.add_pipe(self.nlp.create_pipe('sentencizer'))
+        self.initialized = True
+
+    def __call__(self, article, **kwargs):
+        # process each paragraph separately to avoid getting sentences
+        # crossing paragraphs
+        if not self.initialized:
+            self.initialize()
+        pars = article['pars']
+        # store the raw number of paragraphs
+        article['n_p'] = len(pars)
+        #print("DEBUG: number of pars", len(pars))
+        n_p_filled = 0
+        #print("\n\nDEBUG: {} the texts we get from the paragraphs: ".format(article['id']), pars)
+        docs = list(self.nlp.pipe(pars))
+        for doc in docs:
+            doc.is_parsed = True
+        allthree = [[[t.text, t.pos_, t.lemma_] for t in s] for doc in docs for s in doc.sents]
+        article['n_p_filled'] = n_p_filled
+        article['text_tokens'] = allthree
+        ents = [ent.text for doc in docs for ent in doc.ents if ent.text[0].isupper()]
+        article['text_ents'] = ents
+
+
+class PrSeqSentencesAtt:
+    """
+    Creates fields: title_sent, domain_sent, article_sent, title and article generated from the
+    token lists for the title and article text (using the original token string)
+    The sentences for the article are enclosed in the special <bos> and <eos> markers.
+    """
+    def __init__(self):
+        self.mp_able = True
+        self.need_et = False
+
+    def __call__(self, article, **kwargs):
+        article_tokens = article['text_tokens']
+        all = []
+        first = True
+        for sent in article_tokens:
+            if first:
+                first = False
+            else:
+                all.append("<splt>")
+            # all.append("<bos>")
+            for t in sent:
+                all.append(t[0])
+            # all.append("<eos>")
+        article_sent = " ".join(all)
+        article['article_sent'] = article_sent

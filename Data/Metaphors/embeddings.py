@@ -4,7 +4,7 @@ import math
 import sys
 import csv
 import numpy as np
-from allennlp.commands.elmo import ElmoEmbedder
+#from allennlp.commands.elmo import ElmoEmbedder
 
 def metaphor_elmo(infile):
 
@@ -44,6 +44,8 @@ def metaphor_elmo(infile):
 def extract_emb(emb_file, lab_file):
   labels = []
   embeddings = []
-  labels = list(np.load(lab_file))
-  embeddings = list(np.load(emb_file))
-  return(embeddings, label)
+  labels = np.load(lab_file)
+  embeddings = np.load(emb_file)
+  labels=np.array([np.array(xi).astype(np.int) for xi in labels])
+  embeddings=np.array([np.array(xi) for xi in embeddings])
+  return embeddings, labels
