@@ -32,7 +32,7 @@ def make_elmo_file(args):
             file.write(sents)
             file.close()
             hyp_label.append(label)
-    np.save('hyp_labels', hyp_elmo)
+    np.save('hyp_labels', hyp_label)
     try:
         subprocess.check_call(['allennlp elmo Hyp_article.txt elmo_hyp.hdf5 --average --weight-file Data/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5 --options-file Data/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json'], shell=True)
     except subprocess.CalledProcessError:

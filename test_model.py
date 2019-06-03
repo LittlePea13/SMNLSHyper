@@ -1,6 +1,7 @@
     
 from Data.Metaphors.embeddings import extract_emb
-from model import BiLSTMEncoder,MainModel, ModelHyper, multitask_model, multitask_soft_model
+from model import BiLSTMEncoder,MainModel, ModelHyper, multitask_model, multitask_soft_model, HyperModel1
+from model import multitask_model as multitask_model_elmo
 from helper import evaluate, evaluate_train, get_metaphor_dataset, write_board, get_document_dataset, evaluate_train_hyper,evaluate_hyper
 import torch.nn as nn
 import torch.optim as optim
@@ -15,17 +16,24 @@ import torch.utils.data as data_utils
 
 def test_model(args):
     trained_model = torch.load(args.model, map_location='cpu')
-    hyper_param = trained_model['hyperparameters']
-    encoder_param = trained_model['encoderparameters']
-    meta_param = trained_model['metaparameters']
-
-    if args.multi_model ==  0:
+    if args.multi_model == 0:
+        hyper_param = trained_model['hyperparameters']
+        encoder_param = trained_model['encoderparameters']
+        meta_param = trained_model['metaparameters']
         model = multitask_soft_model(encoder_param, hyper_param, meta_param)
-    else:
+    elif args.multi_model == 1:
+        hyper_param = trained_model['hyperparameters']
+        encoder_param = trained_model['encoderparameters']
+        meta_param = trained_model['metaparameters']
         model = multitask_model(encoder_param, hyper_param, meta_param)
-    data = np.load('hyp_embeds.npy',allow_pickle=True)
+    elif args.multi_model == 2:
+        hyper_param = trained_model['hyperparameters']
+        model = HyperModel1(1024, hyper_param['hidden_dim'],1, hyper_param['dropout_lstm'], hyper_param['dropout_input'], hyper_param['dropout_FC'], hyper_param['dropout_lstm_hyper'], hyper_param['dropout_input_hyper'], hyper_param['dropout_attention'], 2)
+
+    data = np.load('Data/Hyperpartisan/valid_embeds.npy',allow_pickle=True)
+    data_labels = np.load('Data/Hyperpartisan/valid_labels.npy',allow_pickle=True)
     data = np.array([np.array(xi) for xi in data])
-    dataset = TestDocumentDataset(data[0], 200)
+    dataset = TestDocumentDataset(data, 200)
     evaluation_dataloader = data_utils.DataLoader(dataset, batch_size=20,
                               collate_fn=TestDocumentDataset.collate_fn, shuffle=False)
     model.eval()
@@ -38,7 +46,12 @@ def test_model(args):
     for (eval_text, doc_len, eval_lengths) in evaluation_dataloader:
         if torch.cuda.is_available():
             doc_len = doc_len.to(device=device)
-        predicted_meta,predicted  = model(eval_text, eval_lengths, doc_len)
+        if args.multi_model == 2:
+            predicted = model(eval_text, eval_lengths, doc_len)
+            predicted_meta = None
+        else:
+            predicted_meta, predicted = model(eval_text, eval_lengths, doc_len, True)
+            print(predicted_meta.shape)
         _, predicted_labels = torch.max(predicted.data, 1)
         predict_list.append(predicted_labels)
         predict_confidence.append(torch.exp(predicted.data).data)
@@ -48,12 +61,12 @@ def test_model(args):
     # Set the model back to train mode, which activates dropout again.
     print('Number of predictions ',len(predict_list))
     print(predict_confidence.shape, 'results')
-    all_pred = toEvaluationFormat(all_doc_ids, predict_confidence)
+    all_pred = toEvaluationFormat(all_doc_ids, predict_confidence, data_labels)
     with open(args.out, 'w') as fo:
         for item in all_pred:
             fo.write(item)
 
-def toEvaluationFormat(all_doc_ids, all_prediction):
+def toEvaluationFormat(all_doc_ids, all_prediction, data_labels):
     evaluationFormatList = []
     for i in range(len(all_doc_ids)):
         current_doc_id = all_doc_ids[i]
@@ -65,14 +78,14 @@ def toEvaluationFormat(all_doc_ids, all_prediction):
         else:
             current_prob = 1 - current_prob
             current_pred = 'true'
-        evaluationFormat = str(current_doc_id).zfill(7) + ' ' + str(current_pred) + ' ' + str(current_prob) + '\n'
+        evaluationFormat = str(current_doc_id).zfill(7) + ' ' + str(current_pred) + ' ' + str(current_prob) + ' ' + str(data_labels[i]) + '\n'
         evaluationFormatList.append(evaluationFormat)
     return evaluationFormatList
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-model", default='hyper.pt', type=str, required=True, help="Article XML file")
-    parser.add_argument("-multi_model", default=0, type=bool, required=False, help="Article XML file")
+    parser.add_argument("-multi_model", default=0, type=int, required=False, help="Article XML file")
     parser.add_argument("-out", type=str, help="Output (tsv) file")
     args = parser.parse_args()
     test_model(args)

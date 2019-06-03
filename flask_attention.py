@@ -1,6 +1,6 @@
     
 from Data.Metaphors.embeddings import extract_emb
-from model import BiLSTMEncoder,MainModel, ModelHyper, multitask_model,multitask_soft_model
+from model import BiLSTMEncoder,MainModel, ModelHyper, multitask_model,multitask_soft_model, HyperModel1
 from helper import evaluate, evaluate_train, get_metaphor_dataset, write_board, get_document_dataset, evaluate_train_hyper,evaluate_hyper
 import torch.nn as nn
 import torch.optim as optim
@@ -12,7 +12,6 @@ import numpy as np
 import torch
 from datasets import SentenceDataset,TestDocumentDataset, AdaptSampler
 import torch.utils.data as data_utils
-import numpy as np
 
 import argparse
 #import tensorflow as tf
@@ -27,17 +26,22 @@ import subprocess
 import sys
 import ast
 import csv
-def test_model(model_name, multi_model=True ):
+def test_model(model_name, multi_model='0'):
     trained_model = torch.load(model_name, map_location='cpu')
-    hyper_param = trained_model['hyperparameters']
-    encoder_param = trained_model['encoderparameters']
-    meta_param = trained_model['metaparameters']
-    
-    if multi_model ==  True:
+    if multi_model == '0':
+        hyper_param = trained_model['hyperparameters']
+        encoder_param = trained_model['encoderparameters']
+        meta_param = trained_model['metaparameters']
         model = multitask_soft_model(encoder_param, hyper_param, meta_param)
-    else:
+    elif multi_model == '1':
+        hyper_param = trained_model['hyperparameters']
+        encoder_param = trained_model['encoderparameters']
+        meta_param = trained_model['metaparameters']
         model = multitask_model(encoder_param, hyper_param, meta_param)
-
+    elif multi_model == '2':
+        hyper_param = trained_model['hyperparameters']
+        model = HyperModel1(1024, hyper_param['hidden_dim'],1, hyper_param['dropout_lstm'], hyper_param['dropout_input'], hyper_param['dropout_FC'], hyper_param['dropout_lstm_hyper'], hyper_param['dropout_input_hyper'], hyper_param['dropout_attention'], 2)
+ 
     data = np.load('hyp_embeds.npy',allow_pickle=True)
     data = np.array([np.array(xi) for xi in data])
     dataset = TestDocumentDataset(data[0], 200)
@@ -53,7 +57,11 @@ def test_model(model_name, multi_model=True ):
     for (eval_text, doc_len, eval_lengths) in evaluation_dataloader:
         if torch.cuda.is_available():
             doc_len = doc_len.to(device=device)
-        predicted_meta, predicted = model(eval_text, eval_lengths, doc_len, True)
+        if multi_model == '2': 
+            predicted = model(eval_text, eval_lengths, doc_len)
+            predicted_meta = None
+        else:
+            predicted_meta, predicted = model(eval_text, eval_lengths, doc_len, True)
         _, predicted_labels = torch.max(predicted.view(-1,2).data, 1)
         predict_list.append(predicted_labels.item())
         predict_confidence.append(torch.exp(predicted.view(-1,2).data).data)
@@ -63,8 +71,8 @@ def test_model(model_name, multi_model=True ):
     print(predict_list)
     # predicted_labels = [predict for element in predicted_labels for predict in element]
     # Set the model back to train mode, which activates dropout again.
-
-    predicted_meta = torch.exp(predicted_meta[:,:,1]).tolist()
+    if multi_model != '2': 
+        predicted_meta = torch.exp(predicted_meta[:,:,1]).tolist()
     activation_maps = []
     activation_maps_words = []
     activation_maps_words_meta = []
@@ -87,11 +95,17 @@ def test_model(model_name, multi_model=True ):
                     print(str_sen)
                     str_words.append(str_sen)
                     activation_maps_words.append(list(zip(row[1],list(map(float, ast.literal_eval(row[0][0])))[:len(row[1])])))
-                    activation_maps_words_meta.append(list(zip(row[1],predicted_meta[i][:len(row[1])])))
+                    if multi_model == '2': 
+                        activation_maps_words_meta.append(list(zip(row[1],np.zeros(len(row[1])))))
+                    else:
+                        activation_maps_words_meta.append(list(zip(row[1],predicted_meta[i][:len(row[1])])))
                     #new_row.append(list(zip(row[1],predicted_meta[i][:len(row[1])], ast.literal_eval(row[0][0])[:len(row[1])])))#,predicted_meta[i])))
                     new_row.append(row[0][1])
                     new_row.append(row[1])
-                    new_row.append(predicted_meta[i][:len(row[1])])
+                    if multi_model == '2': 
+                        new_row.append(np.zeros(len(row[1])))
+                    else:
+                        new_row.append(predicted_meta[i][:len(row[1])])
                     new_row.append(ast.literal_eval(row[0][0])[:len(row[1])])
                     activation_maps_sen.append(row[0][1])
                     all.append(new_row)
@@ -118,7 +132,7 @@ def activations():
         try:
             subprocess.check_call(['/anaconda3/envs/statnlp/bin/python3 Data/Hyperpartisan/attention.py -text "' + text+'"'], shell=True)
             subprocess.check_call(['/anaconda3/envs/statnlp/bin/python3 Data/elmo_power_att.py -TSV output_trial.tsv'], shell=True)
-            activation_maps, predicted_labels, predict_confidence, str_words, activation_maps_words_meta = test_model('Model/multitask_model.pt', False)
+            activation_maps, predicted_labels, predict_confidence, str_words, activation_maps_words_meta = test_model('Model/hyperpartisan1.pt', '2')#test_model('Model/hyperpartisan1.pt', '2') #test_model('Model/multitask_model.pt', '1')
             print(activation_maps_words_meta)
         except subprocess.CalledProcessError:
             print('didnt work')

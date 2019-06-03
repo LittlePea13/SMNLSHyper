@@ -102,6 +102,64 @@ class MainModel(nn.Module):
 
         return normalized_output 
 
+class HyperModel1(nn.Module):
+    
+    def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
+       
+        super(HyperModel1, self).__init__()
+        
+        self.hidden_dim = hidden_dim
+        self.layers = layers
+        self.dropout_FC = dropout_FC
+        self.dropout_lstm = dropout_lstm
+        self.dropout_input = dropout_input
+        self.embbedding = BiLSTMEncoder(embed_dim,hidden_dim,layers,dropout_lstm,dropout_input)
+        self.self_attention = SelfAttention(2*hidden_dim, dropout_attention)
+        self.self_attention_sentence = SelfAttention(2*hidden_dim, dropout_attention)
+        self.doc_embbedding = BiLSTMEncoder(2*hidden_dim,hidden_dim,layers,dropout_lstm_hyper,dropout_input_hyper)
+        self.metafor_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
+        self.doc_classifier = Metaphor(dropout_FC, num_classes, hidden_dim)
+        if torch.cuda.is_available():
+            self.embbedding.to(device = torch.device('cuda'))
+            self.metafor_classifier.to(device=torch.device('cuda'))
+    
+    def forward(self, squezeed, squezeed_lengths, doc_lengths):
+        
+        start = time.time()
+        if torch.cuda.is_available():
+            squezeed = squezeed.to(device=torch.device('cuda'))
+            squezeed_lengths = squezeed_lengths.to(device=torch.device('cuda'))
+        predicted = self.embbedding(squezeed, squezeed_lengths)
+        end = time.time()
+#         print(end - start, ' First layer')
+
+        averaged_docs, attention, weighted = self.self_attention_sentence(predicted, squezeed_lengths.int())
+
+        sigm = nn.Sigmoid()
+        soft = nn.Softmax()
+        attention_list = normalize(soft(squezeed_lengths * attention.transpose(0,1)).transpose(0,1)).tolist()
+
+        predicted_docs = torch.split(averaged_docs, split_size_or_sections=list(doc_lengths))
+        predicted_docs = pad_sequence(predicted_docs, batch_first=True, padding_value=0)
+        end = time.time()
+#         print(end - start, ' Average sentences and pad doc')
+        out_embedding = self.doc_embbedding.forward(predicted_docs, doc_lengths)
+        end = time.time()
+#         print(end - start, ' Second Layer')
+        prediction, attention, weighted = self.self_attention(out_embedding, doc_lengths)
+        attention_list_sen = normalize(sigm(attention)).tolist()
+        with open('attention_stuff.csv', 'w') as csvfile:
+            writer = csv.writer(csvfile, delimiter='\t')
+            for i, j in zip(attention_list, attention_list_sen):
+                writer.writerow((str(i), j))
+        end = time.time()
+#         print(end - start, ' Attention Layer')
+        class_prediction = self.doc_classifier(prediction)
+        end = time.time()
+#         print(end - start, ' Last Layer')
+        return class_prediction 
+
+
 class ModelHyper(nn.Module):
     def __init__(self, embed_dim, hidden_dim, layers, dropout_lstm, dropout_input, dropout_FC, dropout_lstm_hyper,dropout_input_hyper,dropout_attention,num_classes):
         super(ModelHyper, self).__init__()
